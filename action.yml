@@ -1,0 +1,69 @@
+name: pslrm-bump-action
+description: Update a pslrm lockfile and open or update a pull request.
+
+inputs:
+  project-path:
+    description: Path to the target pslrm project root.
+    required: false
+    default: .
+  target-powershell-edition:
+    description: PowerShell edition used to update the lockfile. Use core for pwsh or desktop for Windows PowerShell.
+    required: false
+    default: core
+  github-token:
+    description: Token for git and GitHub operations such as push and pull request creation. Use a token that can create a CI-ready pull request.
+    required: true
+
+outputs:
+  changed:
+    description: Whether the action detected a lockfile change.
+    value: ${{ steps.invoke-core.outputs.changed || steps.invoke-desktop.outputs.changed }}
+
+runs:
+  using: composite
+  steps:
+    - name: Fail on invalid target PowerShell edition
+      if: ${{ runner.os == 'Windows' && inputs.target-powershell-edition != 'core' && inputs.target-powershell-edition != 'desktop' }}
+      shell: pwsh
+      env:
+        TARGET_POWERSHELL_EDITION: ${{ inputs.target-powershell-edition }}
+      run: |
+        throw "Unsupported target-powershell-edition '$env:TARGET_POWERSHELL_EDITION'. Use 'core' or 'desktop'."
+
+    - name: Fail on unsupported target PowerShell edition for non-Windows
+      if: ${{ runner.os != 'Windows' && inputs.target-powershell-edition == 'desktop' }}
+      shell: pwsh
+      env:
+        TARGET_POWERSHELL_EDITION: ${{ inputs.target-powershell-edition }}
+      run: |
+        throw "target-powershell-edition '$env:TARGET_POWERSHELL_EDITION' is not supported on non-Windows runners. Use 'core'."
+
+    - name: Invoke bump action (core)
+      id: invoke-core
+      if: ${{ inputs.target-powershell-edition == 'core' }}
+      shell: pwsh
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        GH_TOKEN: ${{ inputs.github-token }}
+        PROJECT_PATH: ${{ inputs.project-path }}
+        TARGET_POWERSHELL_EDITION: ${{ inputs.target-powershell-edition }}
+      run: |
+        $scriptPath = Join-Path $env:ACTION_PATH 'scripts/Invoke-BumpAction.ps1'
+        & $scriptPath `
+          -ProjectPath $env:PROJECT_PATH `
+          -TargetPowerShellEdition $env:TARGET_POWERSHELL_EDITION
+
+    - name: Invoke bump action (desktop)
+      id: invoke-desktop
+      if: ${{ inputs.target-powershell-edition == 'desktop' && runner.os == 'Windows' }}
+      shell: powershell
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        GH_TOKEN: ${{ inputs.github-token }}
+        PROJECT_PATH: ${{ inputs.project-path }}
+        TARGET_POWERSHELL_EDITION: ${{ inputs.target-powershell-edition }}
+      run: |
+        $scriptPath = Join-Path $env:ACTION_PATH 'scripts/Invoke-BumpAction.ps1'
+        & $scriptPath `
+          -ProjectPath $env:PROJECT_PATH `
+          -TargetPowerShellEdition $env:TARGET_POWERSHELL_EDITION
