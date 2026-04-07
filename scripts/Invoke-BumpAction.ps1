@@ -48,7 +48,7 @@ try {
     Write-Host "Project path: '${resolvedProjectPath}' Target PowerShell edition: '${TargetPowerShellEdition}'"
 
     if ([string]::IsNullOrWhiteSpace($env:GH_TOKEN)) {
-        throw @'GH_TOKEN is required. Provide github-token so the action can push changes and create or update a CI-ready pull request.'
+        throw 'GH_TOKEN is required. Provide github-token so the action can push changes and create or update a CI-ready pull request.'
     }
 
     Write-Host 'GitHub token: available'
