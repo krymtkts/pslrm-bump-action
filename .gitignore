@@ -3,3 +3,6 @@
 # Pester
 testResults*.xml
 coverage*.xml
+
+# pslrm
+.pslrm
