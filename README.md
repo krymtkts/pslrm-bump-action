@@ -9,6 +9,8 @@ When the lockfile changes, it opens or updates a pull request.
 
 - Runs pslrm as part of a dependency bump workflow.
 - Keeps the caller workflow focused on scheduling and permissions.
+- Bootstraps bundled pslrm and updates the target lockfile.
+- Reports whether the lockfile changed.
 - Automates the branch, commit, push, and pull request steps around the lockfile update.
 
 ## Project Status
