@@ -1,0 +1,5 @@
+@{
+    Pester = @{
+        Repository = 'PSGallery'
+    }
+}

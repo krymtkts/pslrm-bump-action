@@ -1,0 +1,64 @@
+name: Restore and unit test
+description: Bootstrap pslrm, restore locked development dependencies, and run unit tests.
+
+inputs:
+  shell:
+    description: Shell used to execute restore and unit test commands.
+    required: true
+  disable-coverage:
+    description: Whether to disable code coverage collection.
+    required: false
+    default: false
+
+runs:
+  using: composite
+  steps:
+    - name: Prepare Microsoft.PowerShell.PSResourceGet for Windows PowerShell
+      if: inputs.shell == 'powershell'
+      shell: ${{ inputs.shell }}
+      run: |
+        Install-Module -Name Microsoft.PowerShell.PSResourceGet -Force -Scope CurrentUser -Repository PSGallery -SkipPublisherCheck -AllowPrerelease
+
+    - name: Resolve bundled pslrm version
+      id: resolve-pslrm-version
+      shell: pwsh
+      run: |
+        $pslrmVersionPath = Join-Path $env:GITHUB_WORKSPACE 'pslrm-version.psd1'
+        $pslrmVersionData = Import-PowerShellDataFile -Path $pslrmVersionPath
+        $pslrmVersion = $pslrmVersionData.pslrm
+        if ([string]::IsNullOrWhiteSpace($pslrmVersion)) {
+            throw "The bundled pslrm version is not defined in $pslrmVersionPath."
+        }
+
+        "pslrm_version=$pslrmVersion" >> $env:GITHUB_OUTPUT
+
+    - name: Bootstrap pslrm from PSGallery
+      shell: ${{ inputs.shell }}
+      env:
+        PSLRM_VERSION: ${{ steps.resolve-pslrm-version.outputs.pslrm_version }}
+      run: |
+        Import-Module Microsoft.PowerShell.PSResourceGet -ErrorAction Stop
+        Set-PSResourceRepository PSGallery -Trusted
+        Install-PSResource -Name pslrm -Version $env:PSLRM_VERSION -Prerelease -Scope CurrentUser -Repository PSGallery -TrustRepository
+
+    - name: Restore modules from PSGallery
+      shell: ${{ inputs.shell }}
+      env:
+        PSLRM_VERSION: ${{ steps.resolve-pslrm-version.outputs.pslrm_version }}
+      run: |
+        Import-Module pslrm -RequiredVersion $env:PSLRM_VERSION -Force
+        Restore-PSLResource
+
+    - name: Run unit tests through Invoke-Build
+      shell: ${{ inputs.shell }}
+      env:
+        DISABLE_COVERAGE: ${{ inputs.disable-coverage }}
+      run: |
+        $params = @{
+            File = './.build.ps1'
+            Task = 'UnitTest'
+        }
+        if ($env:DISABLE_COVERAGE -eq 'true') {
+            $params['DisableCoverage'] = $true
+        }
+        Invoke-Build @params

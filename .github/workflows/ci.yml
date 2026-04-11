@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Restore dependencies and run unit tests
+        uses: ./.github/actions/restore-and-unit-test
+        with:
+          shell: pwsh
+
+  smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            edition: core
+          - os: macos-latest
+            edition: core
+          - os: windows-latest
+            edition: core
+          - os: windows-latest
+            edition: desktop
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Run self-test action
+        id: smoke
+        uses: ./
+        with:
+          project-path: tests/fixtures/basic-project
+          target-powershell-edition: ${{ matrix.edition }}
+          github-token: ${{ github.token }}
+
+      - name: Assert changed output
+        shell: pwsh
+        env:
+          CHANGED: ${{ steps.smoke.outputs.changed }}
+          EDITION: ${{ matrix.edition }}
+          RUNNER_OS: ${{ runner.os }}
+        run: |
+          if ($env:CHANGED -ne 'false') {
+              throw "Expected changed=false for $env:RUNNER_OS / $env:EDITION, but got '$env:CHANGED'."
+          }
