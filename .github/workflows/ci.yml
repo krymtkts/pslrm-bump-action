@@ -11,7 +11,15 @@ permissions:
 
 jobs:
   unit:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            shell: pwsh
+          - os: windows-latest
+            shell: powershell
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -19,7 +27,7 @@ jobs:
       - name: Restore dependencies and run unit tests
         uses: ./.github/actions/restore-and-unit-test
         with:
-          shell: pwsh
+          shell: ${{ matrix.shell }}
 
   smoke:
     strategy:
