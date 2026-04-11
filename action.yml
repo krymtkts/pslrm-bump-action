@@ -17,53 +17,69 @@ inputs:
 outputs:
   changed:
     description: Whether the action detected a lockfile change.
-    value: ${{ steps.invoke-core.outputs.changed || steps.invoke-desktop.outputs.changed }}
+    value: ${{ steps.invoke.outputs.changed }}
 
 runs:
   using: composite
   steps:
-    - name: Fail on invalid target PowerShell edition
-      if: ${{ runner.os == 'Windows' && inputs.target-powershell-edition != 'core' && inputs.target-powershell-edition != 'desktop' }}
+    - name: Validate target PowerShell edition
       shell: pwsh
       env:
+        RUNNER_OS: ${{ runner.os }}
         TARGET_POWERSHELL_EDITION: ${{ inputs.target-powershell-edition }}
       run: |
-        throw "Unsupported target-powershell-edition '$env:TARGET_POWERSHELL_EDITION'. Use 'core' or 'desktop'."
+        switch ($env:TARGET_POWERSHELL_EDITION) {
+          'core' {
+            break
+          }
+          'desktop' {
+            if ($env:RUNNER_OS -ne 'Windows') {
+              throw "target-powershell-edition '$env:TARGET_POWERSHELL_EDITION' is not supported on non-Windows runners. Use 'core'."
+            }
+            break
+          }
+          default {
+            if ($env:RUNNER_OS -eq 'Windows') {
+              throw "Unsupported target-powershell-edition '$env:TARGET_POWERSHELL_EDITION'. Use 'core' or 'desktop'."
+            }
 
-    - name: Fail on unsupported target PowerShell edition for non-Windows
-      if: ${{ runner.os != 'Windows' && inputs.target-powershell-edition == 'desktop' }}
-      shell: pwsh
+            throw "Unsupported target-powershell-edition '$env:TARGET_POWERSHELL_EDITION'. Use 'core'."
+          }
+        }
+
+    - name: Bootstrap bundled pslrm
+      id: bootstrap
+      shell: ${{ inputs.target-powershell-edition == 'desktop' && 'powershell' || 'pwsh' }}
       env:
+        ACTION_PATH: ${{ github.action_path }}
         TARGET_POWERSHELL_EDITION: ${{ inputs.target-powershell-edition }}
       run: |
-        throw "target-powershell-edition '$env:TARGET_POWERSHELL_EDITION' is not supported on non-Windows runners. Use 'core'."
+        $bootstrapScriptPath = Join-Path $env:ACTION_PATH 'scripts/Initialize-PslrmBootstrap.ps1'
+        $pslrmVersionPath = Join-Path $env:ACTION_PATH 'pslrm-version.psd1'
+        $bootstrapParams = @{
+          TargetPowerShellEdition = $env:TARGET_POWERSHELL_EDITION
+          PslrmVersionPath = $pslrmVersionPath
+        }
+        # NOTE: Bootstrap returns a manifest path because RequiredVersion cannot select prerelease builds.
+        $pslrmModulePath = & $bootstrapScriptPath @bootstrapParams
 
-    - name: Invoke bump action (core)
-      id: invoke-core
-      if: ${{ inputs.target-powershell-edition == 'core' }}
-      shell: pwsh
+        "pslrm_module_path=$pslrmModulePath" >> $env:GITHUB_OUTPUT
+
+    - name: Invoke bump action
+      id: invoke
+      shell: ${{ inputs.target-powershell-edition == 'desktop' && 'powershell' || 'pwsh' }}
       env:
         ACTION_PATH: ${{ github.action_path }}
         GH_TOKEN: ${{ inputs.github-token }}
+        PSLRM_MODULE_PATH: ${{ steps.bootstrap.outputs.pslrm_module_path }}
         PROJECT_PATH: ${{ inputs.project-path }}
         TARGET_POWERSHELL_EDITION: ${{ inputs.target-powershell-edition }}
       run: |
-        $scriptPath = Join-Path $env:ACTION_PATH 'scripts/Invoke-BumpAction.ps1'
-        & $scriptPath `
-          -ProjectPath $env:PROJECT_PATH `
-          -TargetPowerShellEdition $env:TARGET_POWERSHELL_EDITION
+        Import-Module $env:PSLRM_MODULE_PATH -Force
 
-    - name: Invoke bump action (desktop)
-      id: invoke-desktop
-      if: ${{ inputs.target-powershell-edition == 'desktop' && runner.os == 'Windows' }}
-      shell: powershell
-      env:
-        ACTION_PATH: ${{ github.action_path }}
-        GH_TOKEN: ${{ inputs.github-token }}
-        PROJECT_PATH: ${{ inputs.project-path }}
-        TARGET_POWERSHELL_EDITION: ${{ inputs.target-powershell-edition }}
-      run: |
         $scriptPath = Join-Path $env:ACTION_PATH 'scripts/Invoke-BumpAction.ps1'
-        & $scriptPath `
-          -ProjectPath $env:PROJECT_PATH `
-          -TargetPowerShellEdition $env:TARGET_POWERSHELL_EDITION
+        $invokeParams = @{
+          ProjectPath = $env:PROJECT_PATH
+          TargetPowerShellEdition = $env:TARGET_POWERSHELL_EDITION
+        }
+        & $scriptPath @invokeParams

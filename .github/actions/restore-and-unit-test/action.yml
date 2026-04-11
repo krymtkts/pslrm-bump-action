@@ -13,40 +13,29 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Prepare Microsoft.PowerShell.PSResourceGet for Windows PowerShell
-      if: inputs.shell == 'powershell'
-      shell: ${{ inputs.shell }}
-      run: |
-        Install-Module -Name Microsoft.PowerShell.PSResourceGet -Force -Scope CurrentUser -Repository PSGallery -SkipPublisherCheck -AllowPrerelease
-
-    - name: Resolve bundled pslrm version
-      id: resolve-pslrm-version
-      shell: pwsh
-      run: |
-        $pslrmVersionPath = Join-Path $env:GITHUB_WORKSPACE 'pslrm-version.psd1'
-        $pslrmVersionData = Import-PowerShellDataFile -Path $pslrmVersionPath
-        $pslrmVersion = $pslrmVersionData.pslrm
-        if ([string]::IsNullOrWhiteSpace($pslrmVersion)) {
-            throw "The bundled pslrm version is not defined in $pslrmVersionPath."
-        }
-
-        "pslrm_version=$pslrmVersion" >> $env:GITHUB_OUTPUT
-
     - name: Bootstrap pslrm from PSGallery
+      id: bootstrap
       shell: ${{ inputs.shell }}
       env:
-        PSLRM_VERSION: ${{ steps.resolve-pslrm-version.outputs.pslrm_version }}
+        TARGET_POWERSHELL_EDITION: ${{ inputs.shell == 'powershell' && 'desktop' || 'core' }}
       run: |
-        Import-Module Microsoft.PowerShell.PSResourceGet -ErrorAction Stop
-        Set-PSResourceRepository PSGallery -Trusted
-        Install-PSResource -Name pslrm -Version $env:PSLRM_VERSION -Prerelease -Scope CurrentUser -Repository PSGallery -TrustRepository
+        $bootstrapScriptPath = Join-Path $env:GITHUB_WORKSPACE 'scripts/Initialize-PslrmBootstrap.ps1'
+        $pslrmVersionPath = Join-Path $env:GITHUB_WORKSPACE 'pslrm-version.psd1'
+        $bootstrapParams = @{
+            TargetPowerShellEdition = $env:TARGET_POWERSHELL_EDITION
+            PslrmVersionPath = $pslrmVersionPath
+        }
+        # NOTE: Bootstrap returns a manifest path because RequiredVersion cannot select prerelease builds.
+        $pslrmModulePath = & $bootstrapScriptPath @bootstrapParams
+
+        "pslrm_module_path=$pslrmModulePath" >> $env:GITHUB_OUTPUT
 
     - name: Restore modules from PSGallery
       shell: ${{ inputs.shell }}
       env:
-        PSLRM_VERSION: ${{ steps.resolve-pslrm-version.outputs.pslrm_version }}
+        PSLRM_MODULE_PATH: ${{ steps.bootstrap.outputs.pslrm_module_path }}
       run: |
-        Import-Module pslrm -RequiredVersion $env:PSLRM_VERSION -Force
+        Import-Module $env:PSLRM_MODULE_PATH -Force
         Restore-PSLResource
 
     - name: Run unit tests through Invoke-Build
