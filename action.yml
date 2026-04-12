@@ -10,6 +10,8 @@ inputs:
     description: PowerShell edition used to update the lockfile. Use core for pwsh or desktop for Windows PowerShell.
     required: false
     default: core
+  # NOTE: Use a PAT when the bump branch or PR must trigger follow-up GitHub Actions workflows.
+  # NOTE: Pushes made with the default GITHUB_TOKEN usually do not start new workflow runs.
   github-token:
     description: Token for git and GitHub operations such as push and pull request creation. Use a token that can create a CI-ready pull request.
     required: true
@@ -70,6 +72,7 @@ runs:
       shell: ${{ inputs.target-powershell-edition == 'desktop' && 'powershell' || 'pwsh' }}
       env:
         ACTION_PATH: ${{ github.action_path }}
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         PSLRM_MODULE_PATH: ${{ steps.bootstrap.outputs.pslrm_module_path }}
         PROJECT_PATH: ${{ inputs.project-path }}
         TARGET_POWERSHELL_EDITION: ${{ inputs.target-powershell-edition }}
@@ -87,31 +90,75 @@ runs:
       if: ${{ steps.invoke.outputs.changed == 'true' }}
       shell: pwsh
       env:
-        BUMP_BRANCH_NAME: pslrm-bump
-        BUMP_COMMIT_MESSAGE: Bump psreq.lock.psd1
+        BUMP_BRANCH_NAME: ${{ steps.invoke.outputs.bump_branch_name }}
+        BUMP_COMMIT_MESSAGE: ${{ steps.invoke.outputs.bump_commit_message }}
         GH_TOKEN: ${{ inputs.github-token }}
         LOCKFILE_PATH: ${{ steps.invoke.outputs.lockfile_path }}
         REPOSITORY_ROOT: ${{ steps.invoke.outputs.repository_root }}
-        REPOSITORY_SLUG: ${{ github.repository }}
+        REPOSITORY_FULL_NAME: ${{ github.repository }}
       run: |
         if ([string]::IsNullOrWhiteSpace($env:GH_TOKEN)) {
           throw 'github-token is required to commit and push the updated lockfile.'
         }
 
-        git -C $env:REPOSITORY_ROOT checkout -B $env:BUMP_BRANCH_NAME
+        Write-Host "Preparing bump branch '$env:BUMP_BRANCH_NAME'."
+        git -C $env:REPOSITORY_ROOT switch --force-create $env:BUMP_BRANCH_NAME
         git -C $env:REPOSITORY_ROOT config user.name github-actions[bot]
         git -C $env:REPOSITORY_ROOT config user.email 41898282+github-actions[bot]@users.noreply.github.com
 
         Push-Location $env:REPOSITORY_ROOT
         try {
           $relativeLockfilePath = Resolve-Path -LiteralPath $env:LOCKFILE_PATH -Relative
+          Write-Host "Staging updated lockfile '$relativeLockfilePath'."
           git add -- $relativeLockfilePath
         }
         finally {
           Pop-Location
         }
 
-        git -C $env:REPOSITORY_ROOT commit -m $env:BUMP_COMMIT_MESSAGE
-        $originUrl = "https://x-access-token:$env:GH_TOKEN@github.com/$env:REPOSITORY_SLUG.git"
-        git -C $env:REPOSITORY_ROOT remote set-url origin $originUrl
+        Write-Host "Creating bump commit '$env:BUMP_COMMIT_MESSAGE'."
+        git -C $env:REPOSITORY_ROOT commit --message $env:BUMP_COMMIT_MESSAGE
+        # NOTE: Use an authenticated HTTPS remote so the push runs as the supplied token identity.
+        # NOTE: A PAT can trigger follow-up workflows here; the default GITHUB_TOKEN usually cannot.
+        git -C $env:REPOSITORY_ROOT remote set-url origin "https://x-access-token:$env:GH_TOKEN@github.com/$env:REPOSITORY_FULL_NAME.git"
+        Write-Host "Pushing bump branch '$env:BUMP_BRANCH_NAME' to '$env:REPOSITORY_FULL_NAME'."
         git -C $env:REPOSITORY_ROOT push --force-with-lease --set-upstream origin $env:BUMP_BRANCH_NAME
+        Write-Host 'Bump branch push completed.'
+
+    - name: Create or update pull request
+      if: ${{ steps.invoke.outputs.changed == 'true' }}
+      shell: pwsh
+      env:
+        BASE_BRANCH: ${{ steps.invoke.outputs.base_branch }}
+        BUMP_BRANCH_NAME: ${{ steps.invoke.outputs.bump_branch_name }}
+        GH_TOKEN: ${{ inputs.github-token }}
+        PR_BODY: ${{ steps.invoke.outputs.bump_pr_body }}
+        PR_TITLE: ${{ steps.invoke.outputs.bump_pr_title }}
+        REPOSITORY_FULL_NAME: ${{ github.repository }}
+      run: |
+        Write-Host "Looking for an open pull request from '$env:BUMP_BRANCH_NAME' into '$env:BASE_BRANCH'."
+        $existingPullRequestNumber = @(
+          & gh pr list --repo $env:REPOSITORY_FULL_NAME --base $env:BASE_BRANCH --head $env:BUMP_BRANCH_NAME --state open --json number --jq '.[0].number' 2>$null
+        ) | Select-Object -Last 1
+        if ($LASTEXITCODE -ne 0) {
+          throw 'Failed to query existing bump pull requests.'
+        }
+
+        if ([string]::IsNullOrWhiteSpace($existingPullRequestNumber)) {
+          Write-Host "Creating a new bump pull request with title '$env:PR_TITLE'."
+          & gh pr create --repo $env:REPOSITORY_FULL_NAME --base $env:BASE_BRANCH --head $env:BUMP_BRANCH_NAME --title $env:PR_TITLE --body $env:PR_BODY
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Failed to create the bump pull request.'
+          }
+
+          Write-Host 'Bump pull request created.'
+        }
+        else {
+          Write-Host "Updating existing bump pull request #$existingPullRequestNumber."
+          & gh pr edit $existingPullRequestNumber --repo $env:REPOSITORY_FULL_NAME --title $env:PR_TITLE --body $env:PR_BODY
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to update bump pull request #$existingPullRequestNumber."
+          }
+
+          Write-Host "Bump pull request #$existingPullRequestNumber updated."
+        }
