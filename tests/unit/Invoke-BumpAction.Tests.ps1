@@ -5,7 +5,6 @@ BeforeAll {
 
 Describe 'Invoke-BumpAction' {
     BeforeEach {
-        $script:originalGhToken = $env:GH_TOKEN
         $script:originalGithubOutput = $env:GITHUB_OUTPUT
         $global:UpdateCalls = [System.Collections.Generic.List[object]]::new()
         $global:GitRepositoryRoot = $script:repoRoot
@@ -47,12 +46,7 @@ Describe 'Invoke-BumpAction' {
     }
 
     AfterEach {
-        if ($null -eq $script:originalGhToken) {
-            Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue
-        }
-        else {
-            $env:GH_TOKEN = $script:originalGhToken
-        }
+        Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue
 
         if ($null -eq $script:originalGithubOutput) {
             Remove-Item Env:GITHUB_OUTPUT -ErrorAction SilentlyContinue
@@ -77,7 +71,35 @@ Describe 'Invoke-BumpAction' {
         Set-Content -LiteralPath (Join-Path $projectRoot 'psreq.lock.psd1') -Value 'unchanged-lockfile' -NoNewline
 
         $outputPath = Join-Path $TestDrive 'github-output.txt'
-        $env:GH_TOKEN = 'test-token'
+        $env:GITHUB_OUTPUT = $outputPath
+        $global:SimulatedLockfileContent = 'unchanged-lockfile'
+
+        Push-Location $script:repoRoot
+        try {
+            & $script:scriptPath -ProjectPath $projectRoot -TargetPowerShellEdition 'core'
+        }
+        finally {
+            Pop-Location
+        }
+
+        $outputLines = Get-Content -Path $outputPath
+
+        $outputLines | Should -Contain 'changed=false'
+        $outputLines | Should -Contain "project_root=$projectRoot"
+        $outputLines | Should -Contain "repository_root=$script:repoRoot"
+        $outputLines | Should -Contain "lockfile_path=$(Join-Path $projectRoot 'psreq.lock.psd1')"
+        $global:UpdateCalls.Count | Should -Be 1
+        $global:UpdateCalls[0].Path | Should -Be $projectRoot
+    }
+
+    It 'does not require GH_TOKEN for lockfile update and output generation' {
+        $projectRoot = Join-Path $TestDrive 'project'
+        New-Item -ItemType Directory -Path $projectRoot -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $projectRoot 'psreq.psd1') -Value "@{`n    Pester = @{`n        Repository = 'PSGallery'`n    }`n}" -NoNewline
+        Set-Content -LiteralPath (Join-Path $projectRoot 'psreq.lock.psd1') -Value 'unchanged-lockfile' -NoNewline
+
+        $outputPath = Join-Path $TestDrive 'github-output.txt'
+        Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue
         $env:GITHUB_OUTPUT = $outputPath
         $global:SimulatedLockfileContent = 'unchanged-lockfile'
 
@@ -90,24 +112,6 @@ Describe 'Invoke-BumpAction' {
         }
 
         Get-Content -Path $outputPath | Should -Contain 'changed=false'
-        $global:UpdateCalls.Count | Should -Be 1
-        $global:UpdateCalls[0].Path | Should -Be $projectRoot
-    }
-
-    It 'fails fast when GH_TOKEN is missing' {
-        $outputPath = Join-Path $TestDrive 'github-output.txt'
-        Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue
-        $env:GITHUB_OUTPUT = $outputPath
-
-        Push-Location $script:repoRoot
-        try {
-            {
-                & $script:scriptPath -ProjectPath '.' -TargetPowerShellEdition 'core'
-            } | Should -Throw 'GH_TOKEN is required*'
-        }
-        finally {
-            Pop-Location
-        }
     }
 
     It 'writes changed=true when lockfile content changes' {
@@ -117,7 +121,6 @@ Describe 'Invoke-BumpAction' {
         Set-Content -LiteralPath (Join-Path $projectRoot 'psreq.lock.psd1') -Value 'old-lockfile' -NoNewline
 
         $outputPath = Join-Path $TestDrive 'github-output.txt'
-        $env:GH_TOKEN = 'test-token'
         $env:GITHUB_OUTPUT = $outputPath
         $global:SimulatedLockfileContent = 'new-lockfile'
 
@@ -129,7 +132,12 @@ Describe 'Invoke-BumpAction' {
             Pop-Location
         }
 
-        Get-Content -Path $outputPath | Should -Contain 'changed=true'
+        $outputLines = Get-Content -Path $outputPath
+
+        $outputLines | Should -Contain 'changed=true'
+        $outputLines | Should -Contain "project_root=$projectRoot"
+        $outputLines | Should -Contain "repository_root=$script:repoRoot"
+        $outputLines | Should -Contain "lockfile_path=$(Join-Path $projectRoot 'psreq.lock.psd1')"
     }
 
     It 'fails when project root cannot be resolved' {
@@ -137,7 +145,6 @@ Describe 'Invoke-BumpAction' {
         New-Item -ItemType Directory -Path $projectRoot -Force | Out-Null
 
         $outputPath = Join-Path $TestDrive 'github-output.txt'
-        $env:GH_TOKEN = 'test-token'
         $env:GITHUB_OUTPUT = $outputPath
 
         Push-Location $script:repoRoot
@@ -158,7 +165,6 @@ Describe 'Invoke-BumpAction' {
         Set-Content -LiteralPath (Join-Path $projectRoot 'psreq.lock.psd1') -Value 'old-lockfile' -NoNewline
 
         $outputPath = Join-Path $TestDrive 'github-output.txt'
-        $env:GH_TOKEN = 'test-token'
         $env:GITHUB_OUTPUT = $outputPath
         $global:SimulatedLockfileContent = 'new-lockfile'
         $global:GitStatusLines = @(' M unexpected.txt')

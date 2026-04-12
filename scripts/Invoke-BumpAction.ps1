@@ -75,6 +75,24 @@ function Get-FileContent {
     [System.IO.File]::ReadAllText((Resolve-Path -LiteralPath $Path).Path)
 }
 
+function Set-ActionOutput {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Name,
+
+        [Parameter(Mandatory)]
+        [AllowNull()]
+        [string] $Value
+    )
+
+    if ([string]::IsNullOrWhiteSpace($env:GITHUB_OUTPUT)) {
+        Write-Host "Output $Name=$Value"
+        return
+    }
+
+    "${Name}=${Value}" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+}
+
 $resolvedProjectPath = if ([System.IO.Path]::IsPathRooted($ProjectPath)) {
     [System.IO.Path]::GetFullPath($ProjectPath)
 }
@@ -83,14 +101,12 @@ else {
 }
 $projectRoot = $null
 $lockfileChanged = $false
+$repositoryRoot = $null
+$lockfilePath = $null
 
 Start-LogGroup -Title 'Bootstrap'
 try {
     Write-Host "Project path: '${resolvedProjectPath}' Target PowerShell edition: '${TargetPowerShellEdition}'"
-
-    if ([string]::IsNullOrWhiteSpace($env:GH_TOKEN)) {
-        throw 'GH_TOKEN is required. Provide github-token so the action can push changes and create or update a CI-ready pull request.'
-    }
 
     $projectRoot = Find-ProjectRoot -Path $resolvedProjectPath
     Write-Host "Project root: '${projectRoot}'"
@@ -99,7 +115,7 @@ try {
         throw 'Update-PSLResource is not available. Ensure the action bootstrap imported pslrm before invoking the script.'
     }
 
-    Write-Host 'GitHub token: available'
+    Write-Host 'Project validation completed.'
 }
 finally {
     Stop-LogGroup
@@ -121,12 +137,14 @@ try {
 
     # NOTE: The action is only allowed to modify the lockfile. Scope git status to the
     # target project so unexpected changes in the same checkout fail the run immediately.
-    $repositoryRoot = @(& git -C $projectRoot rev-parse --show-toplevel 2>$null)
-    if ($LASTEXITCODE -ne 0 -or $repositoryRoot.Count -eq 0) {
+    $repositoryRootResult = @(& git -C $projectRoot rev-parse --show-toplevel 2>$null)
+    if ($LASTEXITCODE -ne 0 -or $repositoryRootResult.Count -eq 0) {
         throw 'Failed to resolve the git repository root. Ensure actions/checkout has run before invoking this action.'
     }
 
-    $statusLines = @(& git -C $repositoryRoot[-1] status --porcelain --untracked-files=all -- $projectRoot 2>$null)
+    $repositoryRoot = $repositoryRootResult[-1]
+
+    $statusLines = @(& git -C $repositoryRoot status --porcelain --untracked-files=all -- $projectRoot 2>$null)
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to inspect git status under: $projectRoot"
     }
@@ -159,13 +177,10 @@ Start-LogGroup -Title 'Outputs'
 try {
     $changedValue = if ($lockfileChanged) { 'true' } else { 'false' }
 
-    if ([string]::IsNullOrWhiteSpace($env:GITHUB_OUTPUT)) {
-        Write-Host "Output changed=$changedValue"
-    }
-    else {
-        "changed=$changedValue" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-        Write-Host "Output changed=$changedValue"
-    }
+    Set-ActionOutput -Name 'changed' -Value $changedValue
+    Set-ActionOutput -Name 'project_root' -Value $projectRoot
+    Set-ActionOutput -Name 'repository_root' -Value $repositoryRoot
+    Set-ActionOutput -Name 'lockfile_path' -Value $lockfilePath
 }
 finally {
     Stop-LogGroup

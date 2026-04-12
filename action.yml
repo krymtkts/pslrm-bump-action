@@ -70,7 +70,6 @@ runs:
       shell: ${{ inputs.target-powershell-edition == 'desktop' && 'powershell' || 'pwsh' }}
       env:
         ACTION_PATH: ${{ github.action_path }}
-        GH_TOKEN: ${{ inputs.github-token }}
         PSLRM_MODULE_PATH: ${{ steps.bootstrap.outputs.pslrm_module_path }}
         PROJECT_PATH: ${{ inputs.project-path }}
         TARGET_POWERSHELL_EDITION: ${{ inputs.target-powershell-edition }}
@@ -83,3 +82,36 @@ runs:
           TargetPowerShellEdition = $env:TARGET_POWERSHELL_EDITION
         }
         & $scriptPath @invokeParams
+
+    - name: Commit and push lockfile
+      if: ${{ steps.invoke.outputs.changed == 'true' }}
+      shell: pwsh
+      env:
+        BUMP_BRANCH_NAME: pslrm-bump
+        BUMP_COMMIT_MESSAGE: Bump psreq.lock.psd1
+        GH_TOKEN: ${{ inputs.github-token }}
+        LOCKFILE_PATH: ${{ steps.invoke.outputs.lockfile_path }}
+        REPOSITORY_ROOT: ${{ steps.invoke.outputs.repository_root }}
+        REPOSITORY_SLUG: ${{ github.repository }}
+      run: |
+        if ([string]::IsNullOrWhiteSpace($env:GH_TOKEN)) {
+          throw 'github-token is required to commit and push the updated lockfile.'
+        }
+
+        git -C $env:REPOSITORY_ROOT checkout -B $env:BUMP_BRANCH_NAME
+        git -C $env:REPOSITORY_ROOT config user.name github-actions[bot]
+        git -C $env:REPOSITORY_ROOT config user.email 41898282+github-actions[bot]@users.noreply.github.com
+
+        Push-Location $env:REPOSITORY_ROOT
+        try {
+          $relativeLockfilePath = Resolve-Path -LiteralPath $env:LOCKFILE_PATH -Relative
+          git add -- $relativeLockfilePath
+        }
+        finally {
+          Pop-Location
+        }
+
+        git -C $env:REPOSITORY_ROOT commit -m $env:BUMP_COMMIT_MESSAGE
+        $originUrl = "https://x-access-token:$env:GH_TOKEN@github.com/$env:REPOSITORY_SLUG.git"
+        git -C $env:REPOSITORY_ROOT remote set-url origin $originUrl
+        git -C $env:REPOSITORY_ROOT push --force-with-lease --set-upstream origin $env:BUMP_BRANCH_NAME
