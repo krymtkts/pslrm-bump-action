@@ -13,7 +13,7 @@ inputs:
   # NOTE: Use a PAT when the bump branch or PR must trigger follow-up GitHub Actions workflows.
   # NOTE: Pushes made with the default GITHUB_TOKEN usually do not start new workflow runs.
   github-token:
-    description: Token for git and GitHub operations such as push and pull request creation. Use a token that can create a CI-ready pull request.
+    description: Token for git and GitHub operations such as branch push and pull request creation. Use a PAT when you want follow-up GitHub Actions workflows to run.
     required: true
 
 outputs:
