@@ -43,11 +43,13 @@ if ($pslrmVersion -notmatch '^(?<Version>\d+\.\d+\.\d+)(?:-(?<Prerelease>.+))?$'
     throw "Unsupported bundled pslrm version format: $pslrmVersion"
 }
 
+$expectedPrerelease = if ($null -eq $Matches.Prerelease) { '' } else { [string] $Matches.Prerelease }
+
 $installedPslrmModules = @(
     Get-InstalledPSResource -Name pslrm |
         Where-Object {
             $_.Version.ToString() -eq $Matches.Version -and
-            ($_.Prerelease ?? '') -eq ($Matches.Prerelease ?? '')
+            $(if ($null -eq $_.Prerelease) { '' } else { [string] $_.Prerelease }) -eq $expectedPrerelease
         }
 )
 if ($installedPslrmModules.Count -eq 0) {
