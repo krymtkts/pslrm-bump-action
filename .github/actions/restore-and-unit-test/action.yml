@@ -42,12 +42,15 @@ runs:
       shell: ${{ inputs.shell }}
       env:
         DISABLE_COVERAGE: ${{ inputs.disable-coverage }}
+        PSLRM_MODULE_PATH: ${{ steps.bootstrap.outputs.pslrm_module_path }}
       run: |
+        Import-Module $env:PSLRM_MODULE_PATH -Force
+
         $params = @{
-            File = './.build.ps1'
-            Task = 'UnitTest'
+            Tasks = 'UnitTest'
         }
         if ($env:DISABLE_COVERAGE -eq 'true') {
             $params['DisableCoverage'] = $true
         }
-        Invoke-Build @params
+
+        & ./.build.ps1 @params
