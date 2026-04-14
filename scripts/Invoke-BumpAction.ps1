@@ -63,19 +63,6 @@ function Find-ProjectRoot {
     throw "Project root not found. Missing psreq.psd1 from: $Path"
 }
 
-function Get-FileContent {
-    param(
-        [Parameter(Mandatory)]
-        [string] $Path
-    )
-
-    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
-        return $null
-    }
-
-    [System.IO.File]::ReadAllText((Resolve-Path -LiteralPath $Path).Path)
-}
-
 function Read-DataFile {
     param(
         [Parameter(Mandatory)]
@@ -84,15 +71,13 @@ function Read-DataFile {
         [switch] $AllowMissing
     )
 
-    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
-        if ($AllowMissing) {
-            return @{}
-        }
-
-        throw "Data file was not found: $Path"
+    if (Test-Path -LiteralPath $Path -PathType Leaf) {
+        return Import-PowerShellDataFile -Path (Resolve-Path -LiteralPath $Path).Path
     }
-
-    Import-PowerShellDataFile -Path (Resolve-Path -LiteralPath $Path).Path
+    if ($AllowMissing) {
+        return @{}
+    }
+    throw "Data file was not found: $Path"
 }
 
 function Get-HashtableSignature {
@@ -122,6 +107,18 @@ function Get-HashtableSignature {
     }
 
     [string] $Value
+}
+
+function Test-DataFileChanged {
+    param(
+        [AllowNull()]
+        [object] $Before,
+
+        [AllowNull()]
+        [object] $After
+    )
+
+    (Get-HashtableSignature -Value $Before) -cne (Get-HashtableSignature -Value $After)
 }
 
 function ConvertTo-BranchSlug {
@@ -330,17 +327,11 @@ try {
     $lockfilePath = Join-Path $projectRoot $script:LockfileFileName
     $requirementsData = Read-DataFile -Path $requirementsPath
     $lockfileBeforeData = Read-DataFile -Path $lockfilePath -AllowMissing
-    $lockfileBefore = Get-FileContent -Path $lockfilePath
 
     Update-PSLResource -Path $projectRoot
 
     $lockfileAfterData = Read-DataFile -Path $lockfilePath
-    $lockfileAfter = Get-FileContent -Path $lockfilePath
-    if ($null -eq $lockfileAfter) {
-        throw "Lockfile was not created or updated: $lockfilePath"
-    }
-
-    $lockfileChanged = $lockfileBefore -cne $lockfileAfter
+    $lockfileChanged = Test-DataFileChanged -Before $lockfileBeforeData -After $lockfileAfterData
 
     # NOTE: The action is only allowed to modify the lockfile. Scope git status to the
     # target project so unexpected changes in the same checkout fail the run immediately.
@@ -377,6 +368,10 @@ try {
     $unexpectedPaths = [string[]] @($changedPaths | Where-Object { $_ -notmatch '(^|[\\/])psreq\.lock\.psd1$' })
     if ($unexpectedPaths.Count -gt 0) {
         throw "Unexpected changes detected outside psreq.lock.psd1: $($unexpectedPaths -join ', ')"
+    }
+
+    if ((-not $lockfileChanged) -and ($changedPaths | Where-Object { $_ -match '(^|[\\/])psreq\.lock\.psd1$' })) {
+        Write-Warning 'The lockfile differs in git status, but the parsed lockfile data did not change. This usually indicates line-ending or formatting-only churn.'
     }
 
     $bumpMetadata = Get-BumpMetadata -RequirementsData $requirementsData -LockfileBeforeData $lockfileBeforeData -LockfileAfterData $lockfileAfterData -LockfileChanged $lockfileChanged
