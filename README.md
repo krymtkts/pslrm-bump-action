@@ -89,6 +89,9 @@ jobs:
 > [!IMPORTANT]
 > Pass a PAT to `github-token` when you want follow-up GitHub Actions workflows to run.
 > See [Token Guidance](#token-guidance) for required permissions and `GITHUB_TOKEN` behavior.
+> [!NOTE]
+> This action does not control workflow concurrency.
+> If multiple runs can update the same bump branch, configure `concurrency` in the caller workflow.
 
 Example for a project in a subdirectory:
 
