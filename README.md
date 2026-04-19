@@ -130,21 +130,33 @@ jobs:
 
 ## Token Guidance
 
-Use a token that can push branches and create or update pull requests.
+Pass a token that can push branches and create or update pull requests.
 
 > [!IMPORTANT]
-> Use a PAT when you want follow-up GitHub Actions workflows to run.
-> That PAT should grant `contents: write` and `pull-requests: write` on the target repository.
+> Use a PAT when this action must trigger follow-up GitHub Actions workflows.
+> Grant that PAT `contents: write` and `pull-requests: write` on the target repository.
 
-You can pass `GITHUB_TOKEN` to update the lockfile and create or update the bump pull request.
-In that case, grant the workflow write permissions.
-For example, that often means `contents: write` and `pull-requests: write`.
+Otherwise, use `GITHUB_TOKEN` for same-repository runs.
+Grant the workflow `contents: write` and `pull-requests: write`.
+Also enable `Allow GitHub Actions to create and approve pull requests` on the target repository.
+`GITHUB_TOKEN` can complete this flow, but it does not trigger follow-up workflows.
 
-A PAT can create a branch and pull request that trigger downstream GitHub Actions workflows.
-The default `GITHUB_TOKEN` does not trigger follow-up workflow runs in this branch-push flow.
+You can verify that setting with GitHub CLI:
 
-If you want follow-up GitHub Actions workflows to run, store a PAT in a secret.
-For example, use `PSLRM_BUMP_TOKEN`.
+```powershell
+gh api --method GET repos/OWNER/REPO/actions/permissions/workflow
+```
+
+The setting is on when `can_approve_pull_request_reviews` is `true`.
+You can enable it with:
+
+```powershell
+gh api --method PUT repos/OWNER/REPO/actions/permissions/workflow `
+  -f default_workflow_permissions=read `
+  -F can_approve_pull_request_reviews=true
+```
+
+If you use a PAT, store it in a secret and pass that secret to `github-token`.
 
 ## Versioning
 
@@ -154,6 +166,5 @@ Release notes document which pslrm version each action release uses.
 Use tag-based references for normal consumption.
 Use `@v0` for the preview series after the preview tag becomes available.
 
-Until then, another repository can reference a branch or commit SHA.
-Use that for prerelease validation.
+Until then, reference a branch or commit SHA from another repository for prerelease validation.
 Do not treat it as the long-term public contract.
