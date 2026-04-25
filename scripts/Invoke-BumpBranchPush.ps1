@@ -35,6 +35,22 @@ function Invoke-GitResult {
     }
 }
 
+function Get-NonEmptyStringLines {
+    param(
+        [AllowNull()]
+        [object[]] $Lines
+    )
+
+    @(
+        foreach ($line in @($Lines)) {
+            $text = [string] $line
+            if (-not [string]::IsNullOrWhiteSpace($text)) {
+                $text
+            }
+        }
+    )
+}
+
 function Invoke-Git {
     param(
         [Parameter(Mandatory, Position = 0)]
@@ -49,13 +65,7 @@ function Invoke-Git {
         return $result
     }
 
-    $details = @(
-        foreach ($line in @($result.Output)) {
-            if (-not [string]::IsNullOrWhiteSpace([string] $line)) {
-                [string] $line
-            }
-        }
-    )
+    $details = Get-NonEmptyStringLines -Lines $result.Output
 
     if ($details.Count -gt 0) {
         throw "$FailureMessage`n$($details -join "`n")"
@@ -70,16 +80,7 @@ function Write-GitOutput {
         [object[]] $Lines
     )
 
-    foreach ($line in @($Lines)) {
-        if ($null -eq $line) {
-            continue
-        }
-
-        $text = [string] $line
-        if ([string]::IsNullOrWhiteSpace($text)) {
-            continue
-        }
-
+    foreach ($text in (Get-NonEmptyStringLines -Lines $Lines)) {
         Write-Host $text
     }
 }
@@ -156,7 +157,10 @@ function Invoke-BumpBranchPush {
         $existingRemoteCommit = $null
         $reuseExistingBranch = $false
         $remoteHead = [string] ($remoteHeadResult.Output | Select-Object -Last 1)
-        if (-not [string]::IsNullOrWhiteSpace($remoteHead)) {
+        if ([string]::IsNullOrWhiteSpace($remoteHead)) {
+            Write-Host "Remote branch '$BumpBranchName' does not exist yet."
+        }
+        else {
             $existingRemoteCommit = ($remoteHead -split "`t", 2)[0]
             Write-Host "Remote branch '$BumpBranchName' exists at '$existingRemoteCommit'."
 
@@ -169,9 +173,6 @@ function Invoke-BumpBranchPush {
                 Write-GitHubAnnotation -Label Notice -Message "Remote branch '$BumpBranchName' already contains the desired lockfile update. Skipping commit and push."
                 $reuseExistingBranch = $true
             }
-        }
-        else {
-            Write-Host "Remote branch '$BumpBranchName' does not exist yet."
         }
 
         [pscustomobject]@{
@@ -219,13 +220,7 @@ function Invoke-BumpBranchPush {
                 throw $message
             }
 
-            $details = @(
-                foreach ($line in @($pushResult.Output)) {
-                    if (-not [string]::IsNullOrWhiteSpace([string] $line)) {
-                        [string] $line
-                    }
-                }
-            )
+            $details = Get-NonEmptyStringLines -Lines $pushResult.Output
 
             if ($details.Count -gt 0) {
                 throw "Failed to push bump branch '$BumpBranchName'.`n$($details -join "`n")"
