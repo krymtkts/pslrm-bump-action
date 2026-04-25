@@ -82,6 +82,28 @@ function Write-GitOutput {
     }
 }
 
+function Get-RelativePath {
+    param(
+        [Parameter(Mandatory)]
+        [string] $BasePath,
+
+        [Parameter(Mandatory)]
+        [string] $Path
+    )
+
+    $baseFullPath = [System.IO.Path]::GetFullPath($BasePath)
+    $pathFullPath = [System.IO.Path]::GetFullPath($Path)
+
+    $baseUriText = $baseFullPath.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+    $baseUriText = $baseUriText + [System.IO.Path]::DirectorySeparatorChar
+
+    $baseUri = [System.Uri]::new($baseUriText)
+    $pathUri = [System.Uri]::new($pathFullPath)
+    $relativeUri = $baseUri.MakeRelativeUri($pathUri)
+
+    [System.Uri]::UnescapeDataString($relativeUri.ToString()).Replace('/', [System.IO.Path]::DirectorySeparatorChar)
+}
+
 function Invoke-BumpBranchPush {
     param(
         [Parameter(Mandatory)]
@@ -103,7 +125,7 @@ function Invoke-BumpBranchPush {
         [string] $RepositoryFullName
     )
 
-    $gitRelativeLockfilePath = [System.IO.Path]::GetRelativePath($RepositoryRoot, $LockfilePath)
+    $gitRelativeLockfilePath = Get-RelativePath -BasePath $RepositoryRoot -Path $LockfilePath
     if ($gitRelativeLockfilePath.StartsWith('..')) {
         throw "Lockfile path '$LockfilePath' is not under repository root '$RepositoryRoot'."
     }
