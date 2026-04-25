@@ -150,7 +150,7 @@ Describe 'Invoke-BumpBranchPush' {
         $commands = Get-RecordedGitCommands
 
         @($commands | Where-Object { $_ -match ' fetch ' }).Count | Should -Be 1
-        @($commands | Where-Object { $_ -match 'switch --force-create pslrm-bump/pocof refs/remotes/origin/pslrm-bump/pocof' }).Count | Should -Be 1
+        @($commands | Where-Object { $_ -match ' switch ' }).Count | Should -Be 0
         @($commands | Where-Object { $_ -match ' commit ' }).Count | Should -Be 0
         @($commands | Where-Object { $_ -match ' push ' }).Count | Should -Be 0
     }

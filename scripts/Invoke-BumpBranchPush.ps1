@@ -157,9 +157,6 @@ function Invoke-BumpBranchPush {
         if (($remoteLockfileBlobResult.ExitCode -eq 0) -and ([string] ($remoteLockfileBlobResult.Output | Select-Object -Last 1) -ceq $localLockfileBlob)) {
             Write-Host "Remote branch '$BumpBranchName' already contains the desired lockfile update. Reusing it."
 
-            $switchToRemoteBranchResult = Invoke-Git "Failed to check out existing remote branch '$BumpBranchName'." -C $RepositoryRoot switch --force-create $BumpBranchName $remoteTrackingRef
-            Write-GitOutput -Lines $switchToRemoteBranchResult.Output
-
             Write-Host 'Bump branch push skipped.'
             return
         }
