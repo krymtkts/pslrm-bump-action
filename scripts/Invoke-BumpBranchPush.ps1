@@ -1,6 +1,8 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+. (Join-Path $PSScriptRoot 'GitHubActions.Logging.ps1')
+
 function Get-RequiredEnvironmentVariable {
     param(
         [Parameter(Mandatory)]
@@ -132,49 +134,68 @@ function Invoke-BumpBranchPush {
 
     $gitRelativeLockfilePath = $gitRelativeLockfilePath.Replace('\', '/')
 
-    & git -C $RepositoryRoot config user.name 'github-actions[bot]'
-    & git -C $RepositoryRoot config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+    Start-LogGroup -Title 'Prepare git context'
+    try {
+        & git -C $RepositoryRoot config user.name 'github-actions[bot]'
+        & git -C $RepositoryRoot config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
-    # NOTE: Use an authenticated HTTPS remote so the push runs as the supplied token identity.
-    # NOTE: A PAT can trigger follow-up workflows here; the default GITHUB_TOKEN usually cannot.
-    & git -C $RepositoryRoot remote set-url origin "https://x-access-token:$GitHubToken@github.com/$RepositoryFullName.git"
+        # NOTE: Use an authenticated HTTPS remote so the push runs as the supplied token identity.
+        # NOTE: A PAT can trigger follow-up workflows here; the default GITHUB_TOKEN usually cannot.
+        & git -C $RepositoryRoot remote set-url origin "https://x-access-token:$GitHubToken@github.com/$RepositoryFullName.git"
 
-    $localLockfileBlobResult = Invoke-Git "Failed to hash '$gitRelativeLockfilePath'." -C $RepositoryRoot hash-object -- $gitRelativeLockfilePath
-    $localLockfileBlob = [string] ($localLockfileBlobResult.Output | Select-Object -Last 1)
+        $localLockfileBlobResult = Invoke-Git "Failed to hash '$gitRelativeLockfilePath'." -C $RepositoryRoot hash-object -- $gitRelativeLockfilePath
+        $localLockfileBlob = [string] ($localLockfileBlobResult.Output | Select-Object -Last 1)
+    }
+    finally {
+        Stop-LogGroup
+    }
 
-    $remoteHeadResult = Invoke-Git "Failed to inspect remote branch '$BumpBranchName' before push." -C $RepositoryRoot ls-remote --heads origin "refs/heads/$BumpBranchName"
+    Start-LogGroup -Title 'Inspect remote bump branch'
+    try {
+        $remoteHeadResult = Invoke-Git "Failed to inspect remote branch '$BumpBranchName' before push." -C $RepositoryRoot ls-remote --heads origin "refs/heads/$BumpBranchName"
 
-    $existingRemoteCommit = $null
-    $remoteHead = [string] ($remoteHeadResult.Output | Select-Object -Last 1)
-    if (-not [string]::IsNullOrWhiteSpace($remoteHead)) {
-        $existingRemoteCommit = ($remoteHead -split "`t", 2)[0]
-        Write-Host "Remote branch '$BumpBranchName' exists at '$existingRemoteCommit'."
+        $existingRemoteCommit = $null
+        $remoteHead = [string] ($remoteHeadResult.Output | Select-Object -Last 1)
+        if (-not [string]::IsNullOrWhiteSpace($remoteHead)) {
+            $existingRemoteCommit = ($remoteHead -split "`t", 2)[0]
+            Write-Host "Remote branch '$BumpBranchName' exists at '$existingRemoteCommit'."
 
-        $remoteTrackingRef = "refs/remotes/origin/$BumpBranchName"
-        Invoke-Git "Failed to fetch remote branch '$BumpBranchName' for comparison." -C $RepositoryRoot fetch --no-tags --depth=1 origin "refs/heads/${BumpBranchName}:$remoteTrackingRef"
+            $remoteTrackingRef = "refs/remotes/origin/$BumpBranchName"
+            Invoke-Git "Failed to fetch remote branch '$BumpBranchName' for comparison." -C $RepositoryRoot fetch --no-tags --depth=1 origin "refs/heads/${BumpBranchName}:$remoteTrackingRef"
 
-        $remoteLockfileBlobResult = Invoke-GitResult -C $RepositoryRoot rev-parse "${remoteTrackingRef}:$gitRelativeLockfilePath"
-        if (($remoteLockfileBlobResult.ExitCode -eq 0) -and ([string] ($remoteLockfileBlobResult.Output | Select-Object -Last 1) -ceq $localLockfileBlob)) {
-            Write-Host "Remote branch '$BumpBranchName' already contains the desired lockfile update. Reusing it."
+            $remoteLockfileBlobResult = Invoke-GitResult -C $RepositoryRoot rev-parse "${remoteTrackingRef}:$gitRelativeLockfilePath"
+            if (($remoteLockfileBlobResult.ExitCode -eq 0) -and ([string] ($remoteLockfileBlobResult.Output | Select-Object -Last 1) -ceq $localLockfileBlob)) {
+                Write-Host "Remote branch '$BumpBranchName' already contains the desired lockfile update. Reusing it."
+                Write-GitHubAnnotation -Label Notice -Message "Remote branch '$BumpBranchName' already contains the desired lockfile update. Skipping commit and push."
 
-            Write-Host 'Bump branch push skipped.'
-            return
+                Write-Host 'Bump branch push skipped.'
+                return
+            }
+        }
+        else {
+            Write-Host "Remote branch '$BumpBranchName' does not exist yet."
         }
     }
-    else {
-        Write-Host "Remote branch '$BumpBranchName' does not exist yet."
+    finally {
+        Stop-LogGroup
     }
 
-    Write-Host "Preparing bump branch '$BumpBranchName'."
-    $switchToLocalBranchResult = Invoke-Git "Failed to prepare bump branch '$BumpBranchName'." -C $RepositoryRoot switch --force-create $BumpBranchName
-    Write-GitOutput -Lines $switchToLocalBranchResult.Output
+    Start-LogGroup -Title 'Commit updated lockfile'
+    try {
+        Write-Host "Preparing bump branch '$BumpBranchName'."
+        $switchToLocalBranchResult = Invoke-Git "Failed to prepare bump branch '$BumpBranchName'." -C $RepositoryRoot switch --force-create $BumpBranchName
+        Write-GitOutput -Lines $switchToLocalBranchResult.Output
 
-    Write-Host "Staging updated lockfile '$gitRelativeLockfilePath'."
-    & git -C $RepositoryRoot add -- $gitRelativeLockfilePath
+        Write-Host "Staging updated lockfile '$gitRelativeLockfilePath'."
+        & git -C $RepositoryRoot add -- $gitRelativeLockfilePath
 
-    Write-Host "Creating bump commit '$BumpCommitMessage'."
-    $commitResult = Invoke-Git "Failed to create bump commit '$BumpCommitMessage'." -C $RepositoryRoot commit --message $BumpCommitMessage
-    Write-GitOutput -Lines $commitResult.Output
+        Write-Host "Creating bump commit '$BumpCommitMessage'."
+        $commitResult = Invoke-Git "Failed to create bump commit '$BumpCommitMessage'." -C $RepositoryRoot commit --message $BumpCommitMessage
+        Write-GitOutput -Lines $commitResult.Output
+    }
+    finally {
+        Stop-LogGroup
+    }
 
     $leaseArgument = if ([string]::IsNullOrWhiteSpace($existingRemoteCommit)) {
         "--force-with-lease=refs/heads/${BumpBranchName}:"
@@ -183,31 +204,39 @@ function Invoke-BumpBranchPush {
         "--force-with-lease=refs/heads/${BumpBranchName}:$existingRemoteCommit"
     }
 
-    Write-Host "Pushing bump branch '$BumpBranchName' to '$RepositoryFullName'."
-    $pushResult = Invoke-GitResult -C $RepositoryRoot push $leaseArgument --set-upstream origin $BumpBranchName
-    Write-GitOutput -Lines $pushResult.Output
-    if ($pushResult.ExitCode -ne 0) {
-        $pushErrorText = (@($pushResult.Output) -join "`n")
-        if ($pushErrorText -match 'stale info') {
-            throw "Remote branch '$BumpBranchName' changed after inspection. Treating this as a real bump-branch conflict."
-        }
-
-        $details = @(
-            foreach ($line in @($pushResult.Output)) {
-                if (-not [string]::IsNullOrWhiteSpace([string] $line)) {
-                    [string] $line
-                }
+    Start-LogGroup -Title 'Push bump branch'
+    try {
+        Write-Host "Pushing bump branch '$BumpBranchName' to '$RepositoryFullName'."
+        $pushResult = Invoke-GitResult -C $RepositoryRoot push $leaseArgument --set-upstream origin $BumpBranchName
+        Write-GitOutput -Lines $pushResult.Output
+        if ($pushResult.ExitCode -ne 0) {
+            $pushErrorText = (@($pushResult.Output) -join "`n")
+            if ($pushErrorText -match 'stale info') {
+                $message = "Remote branch '$BumpBranchName' changed after inspection. Treating this as a real bump-branch conflict."
+                Write-GitHubAnnotation -Label Error -Message $message
+                throw $message
             }
-        )
 
-        if ($details.Count -gt 0) {
-            throw "Failed to push bump branch '$BumpBranchName'.`n$($details -join "`n")"
+            $details = @(
+                foreach ($line in @($pushResult.Output)) {
+                    if (-not [string]::IsNullOrWhiteSpace([string] $line)) {
+                        [string] $line
+                    }
+                }
+            )
+
+            if ($details.Count -gt 0) {
+                throw "Failed to push bump branch '$BumpBranchName'.`n$($details -join "`n")"
+            }
+
+            throw "Failed to push bump branch '$BumpBranchName'."
         }
 
-        throw "Failed to push bump branch '$BumpBranchName'."
+        Write-Host 'Bump branch push completed.'
     }
-
-    Write-Host 'Bump branch push completed.'
+    finally {
+        Stop-LogGroup
+    }
 }
 
 $invokeParams = @{

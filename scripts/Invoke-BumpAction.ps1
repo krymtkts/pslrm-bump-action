@@ -11,22 +11,11 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+. (Join-Path $PSScriptRoot 'GitHubActions.Logging.ps1')
+
 $script:RequirementsFileName = 'psreq.psd1'
 $script:LockfileFileName = 'psreq.lock.psd1'
 $script:FallbackBranchSlug = 'lockfile'
-
-function Start-LogGroup {
-    param(
-        [Parameter(Mandatory)]
-        [string] $Title
-    )
-
-    Write-Host "::group::${Title}"
-}
-
-function Stop-LogGroup {
-    Write-Host '::endgroup::'
-}
 
 function Find-ProjectRoot {
     param(
