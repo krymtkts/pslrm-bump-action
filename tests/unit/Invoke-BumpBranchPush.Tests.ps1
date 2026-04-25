@@ -138,7 +138,7 @@ Describe 'Invoke-BumpBranchPush' {
         $pushCommand = $commands | Where-Object { $_ -match ' push ' } | Select-Object -First 1
 
         $pushCommand | Should -Match ([regex]::Escape('--force-with-lease=refs/heads/pslrm-bump/pocof:'))
-        ($commands | Where-Object { $_ -match ' commit ' }).Count | Should -Be 1
+        @($commands | Where-Object { $_ -match ' commit ' }).Count | Should -Be 1
     }
 
     It 'reuses the existing remote branch when the lockfile already matches' {
@@ -149,10 +149,10 @@ Describe 'Invoke-BumpBranchPush' {
 
         $commands = Get-RecordedGitCommands
 
-        ($commands | Where-Object { $_ -match ' fetch ' }).Count | Should -Be 1
-        ($commands | Where-Object { $_ -match 'switch --force-create pslrm-bump/pocof refs/remotes/origin/pslrm-bump/pocof' }).Count | Should -Be 1
-        ($commands | Where-Object { $_ -match ' commit ' }).Count | Should -Be 0
-        ($commands | Where-Object { $_ -match ' push ' }).Count | Should -Be 0
+        @($commands | Where-Object { $_ -match ' fetch ' }).Count | Should -Be 1
+        @($commands | Where-Object { $_ -match 'switch --force-create pslrm-bump/pocof refs/remotes/origin/pslrm-bump/pocof' }).Count | Should -Be 1
+        @($commands | Where-Object { $_ -match ' commit ' }).Count | Should -Be 0
+        @($commands | Where-Object { $_ -match ' push ' }).Count | Should -Be 0
     }
 
     It 'updates an existing remote branch with an explicit lease when the lockfile differs' {
@@ -165,7 +165,7 @@ Describe 'Invoke-BumpBranchPush' {
         $pushCommand = $commands | Where-Object { $_ -match ' push ' } | Select-Object -First 1
 
         $pushCommand | Should -Match ([regex]::Escape('--force-with-lease=refs/heads/pslrm-bump/pocof:deadbeef'))
-        ($commands | Where-Object { $_ -match ' commit ' }).Count | Should -Be 1
+        @($commands | Where-Object { $_ -match ' commit ' }).Count | Should -Be 1
     }
 
     It 'fails with a clear message when the explicit lease detects a stale remote branch' {
