@@ -286,15 +286,8 @@ $resolvedProjectPath = if ([System.IO.Path]::IsPathRooted($ProjectPath)) {
 else {
     [System.IO.Path]::GetFullPath((Join-Path (Get-Location) $ProjectPath))
 }
-$projectRoot = $null
-$lockfileChanged = $false
-$repositoryRoot = $null
-$lockfilePath = $null
-$baseBranch = ''
-$bumpMetadata = $null
 
-Start-LogGroup -Title 'Bootstrap'
-try {
+$bootstrapState = Invoke-InLogGroup 'Bootstrap' {
     Write-Host "Project path: '${resolvedProjectPath}' Target PowerShell edition: '${TargetPowerShellEdition}'"
 
     $projectRoot = Find-ProjectRoot -Path $resolvedProjectPath
@@ -305,19 +298,20 @@ try {
     }
 
     Write-Host 'Project validation completed.'
-}
-finally {
-    Stop-LogGroup
-}
 
-Start-LogGroup -Title 'Update lockfile'
-try {
+    [pscustomobject]@{
+        ProjectRoot = $projectRoot
+    }
+}
+$projectRoot = $bootstrapState.ProjectRoot
+
+$updateState = Invoke-InLogGroup 'Update lockfile' {
     $requirementsPath = Join-Path $projectRoot $script:RequirementsFileName
     $lockfilePath = Join-Path $projectRoot $script:LockfileFileName
     $requirementsData = Read-DataFile -Path $requirementsPath
     $lockfileBeforeData = Read-DataFile -Path $lockfilePath -AllowMissing
 
-    Update-PSLResource -Path $projectRoot
+    $null = Update-PSLResource -Path $projectRoot
 
     $lockfileAfterData = Read-DataFile -Path $lockfilePath
     $lockfileChanged = Test-DataFileChanged -Before $lockfileBeforeData -After $lockfileAfterData
@@ -366,25 +360,26 @@ try {
     $bumpMetadata = Get-BumpMetadata -RequirementsData $requirementsData -LockfileBeforeData $lockfileBeforeData -LockfileAfterData $lockfileAfterData -LockfileChanged $lockfileChanged
 
     Write-Host "Lockfile changed: $lockfileChanged"
-}
-finally {
-    Stop-LogGroup
+
+    [pscustomobject]@{
+        BaseBranch = $baseBranch
+        BumpMetadata = $bumpMetadata
+        LockfileChanged = $lockfileChanged
+        LockfilePath = $lockfilePath
+        RepositoryRoot = $repositoryRoot
+    }
 }
 
-Start-LogGroup -Title 'Outputs'
-try {
-    $changedValue = if ($lockfileChanged) { 'true' } else { 'false' }
+Invoke-InLogGroup 'Outputs' {
+    $changedValue = if ($updateState.LockfileChanged) { 'true' } else { 'false' }
 
     Set-ActionOutput -Name 'changed' -Value $changedValue
     Set-ActionOutput -Name 'project_root' -Value $projectRoot
-    Set-ActionOutput -Name 'repository_root' -Value $repositoryRoot
-    Set-ActionOutput -Name 'lockfile_path' -Value $lockfilePath
-    Set-ActionOutput -Name 'base_branch' -Value $baseBranch
-    Set-ActionOutput -Name 'bump_branch_name' -Value $bumpMetadata.BranchName
-    Set-ActionOutput -Name 'bump_commit_message' -Value $bumpMetadata.CommitMessage
-    Set-ActionOutput -Name 'bump_pr_title' -Value $bumpMetadata.PullRequestTitle
-    Set-ActionOutput -Name 'bump_pr_body' -Value $bumpMetadata.PullRequestBody
-}
-finally {
-    Stop-LogGroup
+    Set-ActionOutput -Name 'repository_root' -Value $updateState.RepositoryRoot
+    Set-ActionOutput -Name 'lockfile_path' -Value $updateState.LockfilePath
+    Set-ActionOutput -Name 'base_branch' -Value $updateState.BaseBranch
+    Set-ActionOutput -Name 'bump_branch_name' -Value $updateState.BumpMetadata.BranchName
+    Set-ActionOutput -Name 'bump_commit_message' -Value $updateState.BumpMetadata.CommitMessage
+    Set-ActionOutput -Name 'bump_pr_title' -Value $updateState.BumpMetadata.PullRequestTitle
+    Set-ActionOutput -Name 'bump_pr_body' -Value $updateState.BumpMetadata.PullRequestBody
 }
