@@ -90,6 +90,7 @@ runs:
       if: ${{ steps.invoke.outputs.changed == 'true' }}
       shell: pwsh
       env:
+        ACTION_PATH: ${{ github.action_path }}
         BUMP_BRANCH_NAME: ${{ steps.invoke.outputs.bump_branch_name }}
         BUMP_COMMIT_MESSAGE: ${{ steps.invoke.outputs.bump_commit_message }}
         GH_TOKEN: ${{ inputs.github-token }}
@@ -97,33 +98,8 @@ runs:
         REPOSITORY_ROOT: ${{ steps.invoke.outputs.repository_root }}
         REPOSITORY_FULL_NAME: ${{ github.repository }}
       run: |
-        if ([string]::IsNullOrWhiteSpace($env:GH_TOKEN)) {
-          throw 'github-token is required to commit and push the updated lockfile.'
-        }
-
-        Write-Host "Preparing bump branch '$env:BUMP_BRANCH_NAME'."
-        git -C $env:REPOSITORY_ROOT switch --force-create $env:BUMP_BRANCH_NAME
-        git -C $env:REPOSITORY_ROOT config user.name github-actions[bot]
-        git -C $env:REPOSITORY_ROOT config user.email 41898282+github-actions[bot]@users.noreply.github.com
-
-        Push-Location $env:REPOSITORY_ROOT
-        try {
-          $relativeLockfilePath = Resolve-Path -LiteralPath $env:LOCKFILE_PATH -Relative
-          Write-Host "Staging updated lockfile '$relativeLockfilePath'."
-          git add -- $relativeLockfilePath
-        }
-        finally {
-          Pop-Location
-        }
-
-        Write-Host "Creating bump commit '$env:BUMP_COMMIT_MESSAGE'."
-        git -C $env:REPOSITORY_ROOT commit --message $env:BUMP_COMMIT_MESSAGE
-        # NOTE: Use an authenticated HTTPS remote so the push runs as the supplied token identity.
-        # NOTE: A PAT can trigger follow-up workflows here; the default GITHUB_TOKEN usually cannot.
-        git -C $env:REPOSITORY_ROOT remote set-url origin "https://x-access-token:$env:GH_TOKEN@github.com/$env:REPOSITORY_FULL_NAME.git"
-        Write-Host "Pushing bump branch '$env:BUMP_BRANCH_NAME' to '$env:REPOSITORY_FULL_NAME'."
-        git -C $env:REPOSITORY_ROOT push --force-with-lease --set-upstream origin $env:BUMP_BRANCH_NAME
-        Write-Host 'Bump branch push completed.'
+        $scriptPath = Join-Path $env:ACTION_PATH 'scripts/Invoke-BumpBranchPush.ps1'
+        & $scriptPath
 
     - name: Create or update pull request
       if: ${{ steps.invoke.outputs.changed == 'true' }}
