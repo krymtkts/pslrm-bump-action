@@ -104,6 +104,8 @@ function Invoke-BumpPullRequest {
     Set-ActionOutput -Name 'pull_request_number' -Value $pullRequestNumber
 }
 
+$null = Get-RequiredEnvironmentVariable -Name 'GH_TOKEN' -Purpose 'authenticate GitHub CLI pull request operations'
+
 $invokeParams = @{
     BaseBranch = Get-RequiredEnvironmentVariable -Name 'BASE_BRANCH' -Purpose 'identify the pull request base branch'
     BumpBranchName = Get-RequiredEnvironmentVariable -Name 'BUMP_BRANCH_NAME' -Purpose 'identify the bump pull request head branch'

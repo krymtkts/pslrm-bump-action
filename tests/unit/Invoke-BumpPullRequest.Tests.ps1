@@ -152,4 +152,10 @@ Describe 'Invoke-BumpPullRequest' {
         $outputLines | Should -Contain 'pull_request_action=noop'
         $outputLines | Should -Contain 'pull_request_number=7'
     }
+
+    It 'fails when GH_TOKEN is missing' {
+        Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue
+
+        { & $script:scriptPath } | Should -Throw '*GH_TOKEN is required to authenticate GitHub CLI pull request operations.*'
+    }
 }
