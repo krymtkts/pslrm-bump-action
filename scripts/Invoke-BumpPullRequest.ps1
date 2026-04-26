@@ -41,7 +41,7 @@ function Invoke-BumpPullRequest {
         }
 
         $existingPullRequestJson = @(
-            & gh pr view $existingPullRequestNumber --repo $RepositoryFullName --json title, body 2>$null
+            & gh pr view $existingPullRequestNumber --repo $RepositoryFullName --json 'title,body' 2>$null
         ) | Select-Object -Last 1
         if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($existingPullRequestJson)) {
             throw "Failed to inspect bump pull request #$existingPullRequestNumber."
