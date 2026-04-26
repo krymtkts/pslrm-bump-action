@@ -7,7 +7,7 @@ inputs:
     required: false
     default: .
   target-powershell-edition:
-    description: PowerShell edition used to update the lockfile. Use core for pwsh or desktop for Windows PowerShell.
+    description: PowerShell edition used to run action steps. Use core for pwsh or desktop for Windows PowerShell on Windows runners.
     required: false
     default: core
   # NOTE: Use a PAT when the bump branch or PR must trigger follow-up GitHub Actions workflows.

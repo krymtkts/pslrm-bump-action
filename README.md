@@ -12,7 +12,7 @@ It keeps the caller workflow focused on checkout, permissions, and scheduling.
 
 - Runs pslrm as part of a dependency bump workflow.
 - Keeps the caller workflow focused on scheduling and permissions.
-- Bootstraps bundled pslrm and updates the target lockfile.
+- Bootstraps the pinned pslrm version from PSGallery and updates the target lockfile.
 - Reports the final run result and associated bump branch / pull request identifiers.
 - Automates the branch, commit, push, and pull request steps around the lockfile update.
 
@@ -33,10 +33,15 @@ Current preview scope:
 
 - Check out the repository with `actions/checkout` before you run this action.
 - The target project must contain `psreq.psd1`.
-- The action updates `psreq.lock.psd1` for that project.
 - The token passed to `github-token` must be able to push a branch and create or update pull requests.
-- Pull request operations use GitHub CLI (`gh`). GitHub-hosted runners already include it. Self-hosted runners must provide it.
-- `target-powershell-edition: desktop` requires a Windows runner.
+- GitHub-hosted runners already include the required PowerShell runtime, `git`, and GitHub CLI(`gh`).
+- Self-hosted runners must also provide these command-line tools.
+  - `git`.
+  - GitHub CLI (`gh`).
+  - PowerShell runtime selected by `target-powershell-edition`.
+    - `core`: PowerShell (`pwsh`).
+    - `desktop`: Windows PowerShell on Windows (`powershell`).
+- The runner must be able to reach PSGallery.
 
 The project root is the directory that contains `psreq.psd1`.
 
@@ -44,9 +49,9 @@ The project root is the directory that contains `psreq.psd1`.
 
 On each run, the action:
 
-1. Boots a bundled, fixed version of `pslrm`.
+1. Installs `Microsoft.PowerShell.PSResourceGet`, then installs pinned `pslrm` from PSGallery.
 2. Resolves the target project root from `project-path`.
-3. Runs `Update-PSLResource` for that project.
+3. Runs `Update-PSLResource` for that project to create or update `psreq.lock.psd1`.
 4. Fails if files other than `psreq.lock.psd1` changed under the target project.
 5. Exposes `result=no_change|created|updated|noop`.
 6. When `result` is not `no_change`, also exposes `bump_branch_name` and `pull_request_number`.
@@ -157,7 +162,7 @@ jobs:
 | Input                       | Required | Default | Description                                                                                                                |
 | --------------------------- | -------- | ------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `project-path`              | No       | `.`     | Path to the target project root or a path below it. The action resolves the directory that contains `psreq.psd1`.          |
-| `target-powershell-edition` | No       | `core`  | PowerShell edition used to run the action. Use `core` for `pwsh` or `desktop` for Windows PowerShell.                      |
+| `target-powershell-edition` | No       | `core`  | PowerShell edition used to run action steps. Use `core` for `pwsh` or `desktop` for Windows PowerShell on Windows runners. |
 | `github-token`              | Yes      | none    | Token used for branch push and pull request operations. Use a PAT when you want follow-up GitHub Actions workflows to run. |
 
 ## Outputs
