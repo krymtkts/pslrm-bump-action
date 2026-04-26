@@ -76,3 +76,68 @@ function Set-ActionOutput {
         "${Name}=${Value}" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
     }
 }
+
+function Get-NonEmptyStringLines {
+    param(
+        [AllowNull()]
+        [object[]] $Lines
+    )
+
+    @(
+        foreach ($line in @($Lines)) {
+            $text = [string] $line
+            if (-not [string]::IsNullOrWhiteSpace($text)) {
+                $text
+            }
+        }
+    )
+}
+
+function Invoke-GitResult {
+    param(
+        [Parameter(ValueFromRemainingArguments)]
+        [object[]] $Arguments
+    )
+
+    $output = @(& git @Arguments 2>&1)
+    $exitCode = $LASTEXITCODE
+
+    [pscustomobject]@{
+        ExitCode = $exitCode
+        Output = $output
+    }
+}
+
+function Invoke-Git {
+    param(
+        [Parameter(Mandatory, Position = 0)]
+        [string] $FailureMessage,
+
+        [Parameter(ValueFromRemainingArguments, Position = 1)]
+        [object[]] $Arguments
+    )
+
+    $result = Invoke-GitResult @Arguments
+    if ($result.ExitCode -eq 0) {
+        return $result
+    }
+
+    $details = Get-NonEmptyStringLines -Lines $result.Output
+
+    if ($details.Count -gt 0) {
+        throw "$FailureMessage`n$($details -join "`n")"
+    }
+
+    throw $FailureMessage
+}
+
+function Write-GitOutput {
+    param(
+        [AllowNull()]
+        [object[]] $Lines
+    )
+
+    foreach ($text in (Get-NonEmptyStringLines -Lines $Lines)) {
+        Write-Host $text
+    }
+}
