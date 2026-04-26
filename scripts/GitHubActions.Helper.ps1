@@ -93,7 +93,7 @@ function Get-NonEmptyStringLines {
     )
 }
 
-function Invoke-GitResult {
+function gitr {
     param(
         [Parameter(ValueFromRemainingArguments)]
         [object[]] $Arguments
@@ -108,7 +108,7 @@ function Invoke-GitResult {
     }
 }
 
-function Invoke-Git {
+function gitx {
     param(
         [Parameter(Mandatory, Position = 0)]
         [string] $FailureMessage,
@@ -117,7 +117,7 @@ function Invoke-Git {
         [object[]] $Arguments
     )
 
-    $result = Invoke-GitResult @Arguments
+    $result = gitr @Arguments
     if ($result.ExitCode -eq 0) {
         return $result
     }
