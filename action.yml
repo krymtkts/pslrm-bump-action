@@ -31,7 +31,7 @@ runs:
   using: composite
   steps:
     - name: Validate target PowerShell edition
-      shell: pwsh
+      shell: ${{ runner.os == 'Windows' && inputs.target-powershell-edition == 'desktop' && 'powershell' || 'pwsh' }}
       env:
         RUNNER_OS: ${{ runner.os }}
         TARGET_POWERSHELL_EDITION: ${{ inputs.target-powershell-edition }}
@@ -95,7 +95,7 @@ runs:
     - name: Commit and push lockfile
       id: branch
       if: ${{ steps.invoke.outputs.changed == 'true' }}
-      shell: pwsh
+      shell: ${{ inputs.target-powershell-edition == 'desktop' && 'powershell' || 'pwsh' }}
       env:
         ACTION_PATH: ${{ github.action_path }}
         BUMP_BRANCH_NAME: ${{ steps.invoke.outputs.bump_branch_name }}
@@ -111,7 +111,7 @@ runs:
     - name: Create or update pull request
       id: pr
       if: ${{ steps.invoke.outputs.changed == 'true' }}
-      shell: pwsh
+      shell: ${{ inputs.target-powershell-edition == 'desktop' && 'powershell' || 'pwsh' }}
       env:
         ACTION_PATH: ${{ github.action_path }}
         BASE_BRANCH: ${{ steps.invoke.outputs.base_branch }}
@@ -126,7 +126,7 @@ runs:
 
     - name: Finalize action outputs
       id: finalize
-      shell: pwsh
+      shell: ${{ inputs.target-powershell-edition == 'desktop' && 'powershell' || 'pwsh' }}
       env:
         BRANCH_ACTION: ${{ steps.branch.outputs.branch_action }}
         BUMP_BRANCH_NAME: ${{ steps.invoke.outputs.bump_branch_name }}
