@@ -11,7 +11,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-. (Join-Path $PSScriptRoot 'GitHubActions.Logging.ps1')
+. (Join-Path $PSScriptRoot 'GitHubActions.Helper.ps1')
 
 $script:RequirementsFileName = 'psreq.psd1'
 $script:LockfileFileName = 'psreq.lock.psd1'
