@@ -17,9 +17,15 @@ inputs:
     required: true
 
 outputs:
-  changed:
-    description: Whether the action detected a lockfile change.
-    value: ${{ steps.invoke.outputs.changed }}
+  result:
+    description: Final action result. One of `no_change`, `created`, `updated`, or `noop`.
+    value: ${{ steps.finalize.outputs.result }}
+  bump_branch_name:
+    description: Bump branch name associated with the run. Empty when `result=no_change`.
+    value: ${{ steps.finalize.outputs.bump_branch_name }}
+  pull_request_number:
+    description: Pull request number associated with the run. Empty when `result=no_change`.
+    value: ${{ steps.finalize.outputs.pull_request_number }}
 
 runs:
   using: composite
@@ -87,6 +93,7 @@ runs:
         & $scriptPath @invokeParams
 
     - name: Commit and push lockfile
+      id: branch
       if: ${{ steps.invoke.outputs.changed == 'true' }}
       shell: pwsh
       env:
@@ -102,9 +109,11 @@ runs:
         & $scriptPath
 
     - name: Create or update pull request
+      id: pr
       if: ${{ steps.invoke.outputs.changed == 'true' }}
       shell: pwsh
       env:
+        ACTION_PATH: ${{ github.action_path }}
         BASE_BRANCH: ${{ steps.invoke.outputs.base_branch }}
         BUMP_BRANCH_NAME: ${{ steps.invoke.outputs.bump_branch_name }}
         GH_TOKEN: ${{ inputs.github-token }}
@@ -112,29 +121,48 @@ runs:
         PR_TITLE: ${{ steps.invoke.outputs.bump_pr_title }}
         REPOSITORY_FULL_NAME: ${{ github.repository }}
       run: |
-        Write-Host "Looking for an open pull request from '$env:BUMP_BRANCH_NAME' into '$env:BASE_BRANCH'."
-        $existingPullRequestNumber = @(
-          & gh pr list --repo $env:REPOSITORY_FULL_NAME --base $env:BASE_BRANCH --head $env:BUMP_BRANCH_NAME --state open --json number --jq '.[0].number' 2>$null
-        ) | Select-Object -Last 1
-        if ($LASTEXITCODE -ne 0) {
-          throw 'Failed to query existing bump pull requests.'
+        $scriptPath = Join-Path $env:ACTION_PATH 'scripts/Invoke-BumpPullRequest.ps1'
+        & $scriptPath
+
+    - name: Finalize action outputs
+      id: finalize
+      shell: pwsh
+      env:
+        BRANCH_ACTION: ${{ steps.branch.outputs.branch_action }}
+        BUMP_BRANCH_NAME: ${{ steps.invoke.outputs.bump_branch_name }}
+        CHANGED: ${{ steps.invoke.outputs.changed }}
+        PR_ACTION: ${{ steps.pr.outputs.pull_request_action }}
+        PULL_REQUEST_NUMBER: ${{ steps.pr.outputs.pull_request_number }}
+      run: |
+        if ($env:CHANGED -ne 'true') {
+          "result=no_change" >> $env:GITHUB_OUTPUT
+          "bump_branch_name=" >> $env:GITHUB_OUTPUT
+          "pull_request_number=" >> $env:GITHUB_OUTPUT
+          return
         }
 
-        if ([string]::IsNullOrWhiteSpace($existingPullRequestNumber)) {
-          Write-Host "Creating a new bump pull request with title '$env:PR_TITLE'."
-          & gh pr create --repo $env:REPOSITORY_FULL_NAME --base $env:BASE_BRANCH --head $env:BUMP_BRANCH_NAME --title $env:PR_TITLE --body $env:PR_BODY
-          if ($LASTEXITCODE -ne 0) {
-            throw 'Failed to create the bump pull request.'
-          }
+        if ([string]::IsNullOrWhiteSpace($env:PR_ACTION)) {
+          throw 'Failed to resolve the final pull request action.'
+        }
 
-          Write-Host 'Bump pull request created.'
+        if ([string]::IsNullOrWhiteSpace($env:BUMP_BRANCH_NAME)) {
+          throw 'Failed to resolve the final bump branch name.'
+        }
+
+        if ([string]::IsNullOrWhiteSpace($env:PULL_REQUEST_NUMBER)) {
+          throw 'Failed to resolve the final pull request number.'
+        }
+
+        $result = if ($env:PR_ACTION -eq 'created') {
+          'created'
+        }
+        elseif (($env:BRANCH_ACTION -eq 'noop') -and ($env:PR_ACTION -eq 'noop')) {
+          'noop'
         }
         else {
-          Write-Host "Updating existing bump pull request #$existingPullRequestNumber."
-          & gh pr edit $existingPullRequestNumber --repo $env:REPOSITORY_FULL_NAME --title $env:PR_TITLE --body $env:PR_BODY
-          if ($LASTEXITCODE -ne 0) {
-            throw "Failed to update bump pull request #$existingPullRequestNumber."
-          }
-
-          Write-Host "Bump pull request #$existingPullRequestNumber updated."
+          'updated'
         }
+
+        "result=$result" >> $env:GITHUB_OUTPUT
+        "bump_branch_name=$env:BUMP_BRANCH_NAME" >> $env:GITHUB_OUTPUT
+        "pull_request_number=$env:PULL_REQUEST_NUMBER" >> $env:GITHUB_OUTPUT

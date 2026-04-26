@@ -13,7 +13,7 @@ It keeps the caller workflow focused on checkout, permissions, and scheduling.
 - Runs pslrm as part of a dependency bump workflow.
 - Keeps the caller workflow focused on scheduling and permissions.
 - Bootstraps bundled pslrm and updates the target lockfile.
-- Reports whether the lockfile changed.
+- Reports the final run result and associated bump branch / pull request identifiers.
 - Automates the branch, commit, push, and pull request steps around the lockfile update.
 
 ## Project Status
@@ -47,8 +47,8 @@ On each run, the action:
 2. Resolves the target project root from `project-path`.
 3. Runs `Update-PSLResource` for that project.
 4. Fails if files other than `psreq.lock.psd1` changed under the target project.
-5. Exposes `changed=true|false`.
-6. If `changed=true`, creates or updates a bump branch and pull request.
+5. Exposes `result=no_change|created|updated|noop`.
+6. When `result` is not `no_change`, also exposes `bump_branch_name` and `pull_request_number`.
 
 When the action needs a pull request:
 
@@ -57,6 +57,13 @@ When the action needs a pull request:
 - It also derives the pull request title and body from the updated lockfile.
 - The action resolves the base branch from the checked-out branch first.
 - If needed, it falls back to GitHub workflow context.
+
+Result values mean:
+
+- `no_change`: The lockfile did not change.
+- `created`: The run created a new bump pull request.
+- `updated`: The run updated the existing bump branch or pull request state.
+- `noop`: The lockfile changed semantically, but required no external update.
 
 ## Usage
 
@@ -117,6 +124,29 @@ jobs:
           github-token: ${{ secrets.PSLRM_BUMP_TOKEN }}
 ```
 
+Example for consuming outputs:
+
+```yaml
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update lockfile and create pull request
+        id: bump
+        uses: krymtkts/pslrm-bump-action@v0
+        with:
+          github-token: ${{ secrets.PSLRM_BUMP_TOKEN }}
+
+      - name: Report result
+        shell: pwsh
+        run: |
+          Write-Host "result=${{ steps.bump.outputs.result }}"
+          Write-Host "bump_branch_name=${{ steps.bump.outputs.bump_branch_name }}"
+          Write-Host "pull_request_number=${{ steps.bump.outputs.pull_request_number }}"
+```
+
 ## Inputs
 
 | Input                       | Required | Default | Description                                                                                                                |
@@ -127,9 +157,11 @@ jobs:
 
 ## Outputs
 
-| Output    | Description                                          |
-| --------- | ---------------------------------------------------- |
-| `changed` | `true` when the lockfile changed, otherwise `false`. |
+| Output                | Description                                                                 |
+| --------------------- | --------------------------------------------------------------------------- |
+| `result`              | Final action result. One of `no_change`, `created`, `updated`, or `noop`.   |
+| `bump_branch_name`    | Bump branch name associated with the run. Empty when `result=no_change`.    |
+| `pull_request_number` | Pull request number associated with the run. Empty when `result=no_change`. |
 
 ## Token Guidance
 

@@ -3,23 +3,6 @@ $ErrorActionPreference = 'Stop'
 
 . (Join-Path $PSScriptRoot 'GitHubActions.Logging.ps1')
 
-function Get-RequiredEnvironmentVariable {
-    param(
-        [Parameter(Mandatory)]
-        [string] $Name,
-
-        [Parameter(Mandatory)]
-        [string] $Purpose
-    )
-
-    $value = [System.Environment]::GetEnvironmentVariable($Name)
-    if ([string]::IsNullOrWhiteSpace($value)) {
-        throw "$Name is required to $Purpose."
-    }
-
-    $value
-}
-
 function Invoke-GitResult {
     param(
         [Parameter(ValueFromRemainingArguments)]
@@ -182,11 +165,18 @@ function Invoke-BumpBranchPush {
     }
 
     if ($remoteInspectionState.ReuseExistingBranch) {
+        Set-ActionOutput -Name 'branch_action' -Value 'noop'
         Write-Host 'Bump branch push skipped.'
         return
     }
 
     $existingRemoteCommit = $remoteInspectionState.ExistingRemoteCommit
+    $branchAction = if ([string]::IsNullOrWhiteSpace($existingRemoteCommit)) {
+        'created'
+    }
+    else {
+        'updated'
+    }
 
     Invoke-InLogGroup 'Commit updated lockfile' {
         Write-Host "Preparing bump branch '$BumpBranchName'."
@@ -229,6 +219,7 @@ function Invoke-BumpBranchPush {
             throw "Failed to push bump branch '$BumpBranchName'."
         }
 
+        Set-ActionOutput -Name 'branch_action' -Value $branchAction
         Write-Host 'Bump branch push completed.'
     }
 }

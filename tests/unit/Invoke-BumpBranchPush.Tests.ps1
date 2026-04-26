@@ -7,6 +7,7 @@ Describe 'Invoke-BumpBranchPush' {
     BeforeEach {
         $script:originalBumpBranchName = $env:BUMP_BRANCH_NAME
         $script:originalBumpCommitMessage = $env:BUMP_COMMIT_MESSAGE
+        $script:originalGithubOutput = $env:GITHUB_OUTPUT
         $script:originalGitHubToken = $env:GH_TOKEN
         $script:originalLockfilePath = $env:LOCKFILE_PATH
         $script:originalRepositoryRoot = $env:REPOSITORY_ROOT
@@ -21,6 +22,7 @@ Describe 'Invoke-BumpBranchPush' {
         $env:BUMP_BRANCH_NAME = 'pslrm-bump/pocof'
         $env:BUMP_COMMIT_MESSAGE = 'Bump pocof to 0.23.0'
         $env:GH_TOKEN = 'token'
+        $env:GITHUB_OUTPUT = Join-Path $TestDrive 'github-output.txt'
         $env:LOCKFILE_PATH = $script:lockfilePath
         $env:REPOSITORY_ROOT = $TestDrive
         $env:REPOSITORY_FULL_NAME = 'krymtkts/pslrm-actions-sandbox'
@@ -109,6 +111,7 @@ Describe 'Invoke-BumpBranchPush' {
         foreach ($environment in @(
                 @{ Name = 'BUMP_BRANCH_NAME'; Value = $script:originalBumpBranchName },
                 @{ Name = 'BUMP_COMMIT_MESSAGE'; Value = $script:originalBumpCommitMessage },
+                @{ Name = 'GITHUB_OUTPUT'; Value = $script:originalGithubOutput },
                 @{ Name = 'GH_TOKEN'; Value = $script:originalGitHubToken },
                 @{ Name = 'LOCKFILE_PATH'; Value = $script:originalLockfilePath },
                 @{ Name = 'REPOSITORY_ROOT'; Value = $script:originalRepositoryRoot },
@@ -136,8 +139,10 @@ Describe 'Invoke-BumpBranchPush' {
 
         $commands = Get-RecordedGitCommands
         $pushCommand = $commands | Where-Object { $_ -match ' push ' } | Select-Object -First 1
+        $outputLines = Get-Content -Path $env:GITHUB_OUTPUT
 
         $pushCommand | Should -Match ([regex]::Escape('--force-with-lease=refs/heads/pslrm-bump/pocof:'))
+        $outputLines | Should -Contain 'branch_action=created'
         @($commands | Where-Object { $_ -match ' commit ' }).Count | Should -Be 1
     }
 
@@ -148,8 +153,10 @@ Describe 'Invoke-BumpBranchPush' {
         & $script:scriptPath
 
         $commands = Get-RecordedGitCommands
+        $outputLines = Get-Content -Path $env:GITHUB_OUTPUT
 
         @($commands | Where-Object { $_ -match ' fetch ' }).Count | Should -Be 1
+        $outputLines | Should -Contain 'branch_action=noop'
         @($commands | Where-Object { $_ -match ' switch ' }).Count | Should -Be 0
         @($commands | Where-Object { $_ -match ' commit ' }).Count | Should -Be 0
         @($commands | Where-Object { $_ -match ' push ' }).Count | Should -Be 0
@@ -163,8 +170,10 @@ Describe 'Invoke-BumpBranchPush' {
 
         $commands = Get-RecordedGitCommands
         $pushCommand = $commands | Where-Object { $_ -match ' push ' } | Select-Object -First 1
+        $outputLines = Get-Content -Path $env:GITHUB_OUTPUT
 
         $pushCommand | Should -Match ([regex]::Escape('--force-with-lease=refs/heads/pslrm-bump/pocof:deadbeef'))
+        $outputLines | Should -Contain 'branch_action=updated'
         @($commands | Where-Object { $_ -match ' commit ' }).Count | Should -Be 1
     }
 

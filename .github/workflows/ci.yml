@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: ["main"]
+    branches: [ "main" ]
   pull_request:
-    branches: ["main"]
+    branches: [ "main" ]
 
 permissions:
   contents: read
@@ -55,13 +55,23 @@ jobs:
           target-powershell-edition: ${{ matrix.edition }}
           github-token: ${{ github.token }}
 
-      - name: Assert changed output
+      - name: Assert result output
         shell: pwsh
         env:
-          CHANGED: ${{ steps.smoke.outputs.changed }}
+          BUMP_BRANCH_NAME: ${{ steps.smoke.outputs.bump_branch_name }}
           EDITION: ${{ matrix.edition }}
+          PULL_REQUEST_NUMBER: ${{ steps.smoke.outputs.pull_request_number }}
+          RESULT: ${{ steps.smoke.outputs.result }}
           RUNNER_OS: ${{ runner.os }}
         run: |
-          if ($env:CHANGED -ne 'false') {
-              throw "Expected changed=false for $env:RUNNER_OS / $env:EDITION, but got '$env:CHANGED'."
+          if ($env:RESULT -ne 'no_change') {
+              throw "Expected result=no_change for $env:RUNNER_OS / $env:EDITION, but got '$env:RESULT'."
+          }
+
+          if (-not [string]::IsNullOrWhiteSpace($env:BUMP_BRANCH_NAME)) {
+              throw "Expected bump_branch_name to be empty for $env:RUNNER_OS / $env:EDITION, but got '$env:BUMP_BRANCH_NAME'."
+          }
+
+          if (-not [string]::IsNullOrWhiteSpace($env:PULL_REQUEST_NUMBER)) {
+              throw "Expected pull_request_number to be empty for $env:RUNNER_OS / $env:EDITION, but got '$env:PULL_REQUEST_NUMBER'."
           }

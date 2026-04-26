@@ -262,124 +262,124 @@ function Resolve-BaseBranch {
     ''
 }
 
-function Set-ActionOutput {
+function Invoke-BumpAction {
     param(
         [Parameter(Mandatory)]
-        [string] $Name,
+        [string] $ProjectPath,
 
         [Parameter(Mandatory)]
-        [AllowNull()]
-        [string] $Value
+        [ValidateSet('core', 'desktop')]
+        [string] $TargetPowerShellEdition
     )
 
-    if ([string]::IsNullOrWhiteSpace($env:GITHUB_OUTPUT)) {
-        Write-Host "Output $Name=$Value"
-        return
+    $resolvedProjectPath = if ([System.IO.Path]::IsPathRooted($ProjectPath)) {
+        [System.IO.Path]::GetFullPath($ProjectPath)
+    }
+    else {
+        [System.IO.Path]::GetFullPath((Join-Path (Get-Location) $ProjectPath))
     }
 
-    "${Name}=${Value}" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-}
+    $bootstrapState = Invoke-InLogGroup 'Bootstrap' {
+        Write-Host "Project path: '${resolvedProjectPath}' Target PowerShell edition: '${TargetPowerShellEdition}'"
 
-$resolvedProjectPath = if ([System.IO.Path]::IsPathRooted($ProjectPath)) {
-    [System.IO.Path]::GetFullPath($ProjectPath)
-}
-else {
-    [System.IO.Path]::GetFullPath((Join-Path (Get-Location) $ProjectPath))
-}
+        $projectRoot = Find-ProjectRoot -Path $resolvedProjectPath
+        Write-Host "Project root: '${projectRoot}'"
 
-$bootstrapState = Invoke-InLogGroup 'Bootstrap' {
-    Write-Host "Project path: '${resolvedProjectPath}' Target PowerShell edition: '${TargetPowerShellEdition}'"
-
-    $projectRoot = Find-ProjectRoot -Path $resolvedProjectPath
-    Write-Host "Project root: '${projectRoot}'"
-
-    if (-not (Get-Command -Name 'Update-PSLResource' -ErrorAction SilentlyContinue)) {
-        throw 'Update-PSLResource is not available. Ensure the action bootstrap imported pslrm before invoking the script.'
-    }
-
-    Write-Host 'Project validation completed.'
-
-    [pscustomobject]@{
-        ProjectRoot = $projectRoot
-    }
-}
-$projectRoot = $bootstrapState.ProjectRoot
-
-$updateState = Invoke-InLogGroup 'Update lockfile' {
-    $requirementsPath = Join-Path $projectRoot $script:RequirementsFileName
-    $lockfilePath = Join-Path $projectRoot $script:LockfileFileName
-    $requirementsData = Read-DataFile -Path $requirementsPath
-    $lockfileBeforeData = Read-DataFile -Path $lockfilePath -AllowMissing
-
-    $null = Update-PSLResource -Path $projectRoot
-
-    $lockfileAfterData = Read-DataFile -Path $lockfilePath
-    $lockfileChanged = Test-DataFileChanged -Before $lockfileBeforeData -After $lockfileAfterData
-
-    # NOTE: The action is only allowed to modify the lockfile. Scope git status to the
-    # target project so unexpected changes in the same checkout fail the run immediately.
-    $repositoryRootResult = @(& git -C $projectRoot rev-parse --show-toplevel 2>$null)
-    $resolvedRepositoryRoot = $repositoryRootResult | Select-Object -Last 1
-    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($resolvedRepositoryRoot)) {
-        throw 'Failed to resolve the git repository root. Ensure actions/checkout has run before invoking this action.'
-    }
-
-    $repositoryRoot = $resolvedRepositoryRoot
-    $baseBranch = Resolve-BaseBranch -RepositoryRoot $repositoryRoot
-    if ([string]::IsNullOrWhiteSpace($baseBranch)) {
-        throw 'Failed to resolve the base branch for the bump pull request.'
-    }
-
-    $statusLines = @(& git -C $repositoryRoot status --porcelain --untracked-files=all -- $projectRoot 2>$null)
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to inspect git status under: $projectRoot"
-    }
-
-    $changedPaths = foreach ($line in $statusLines) {
-        if ([string]::IsNullOrWhiteSpace($line)) {
-            continue
+        if (-not (Get-Command -Name 'Update-PSLResource' -ErrorAction SilentlyContinue)) {
+            throw 'Update-PSLResource is not available. Ensure the action bootstrap imported pslrm before invoking the script.'
         }
 
-        $pathText = $line.Substring(3).Trim()
-        if ($pathText.StartsWith('"') -and $pathText.EndsWith('"')) {
-            $pathText = $pathText.Trim('"')
+        Write-Host 'Project validation completed.'
+
+        [pscustomobject]@{
+            ProjectRoot = $projectRoot
+        }
+    }
+    $projectRoot = $bootstrapState.ProjectRoot
+
+    $updateState = Invoke-InLogGroup 'Update lockfile' {
+        $requirementsPath = Join-Path $projectRoot $script:RequirementsFileName
+        $lockfilePath = Join-Path $projectRoot $script:LockfileFileName
+        $requirementsData = Read-DataFile -Path $requirementsPath
+        $lockfileBeforeData = Read-DataFile -Path $lockfilePath -AllowMissing
+
+        $null = Update-PSLResource -Path $projectRoot
+
+        $lockfileAfterData = Read-DataFile -Path $lockfilePath
+        $lockfileChanged = Test-DataFileChanged -Before $lockfileBeforeData -After $lockfileAfterData
+
+        # NOTE: The action is only allowed to modify the lockfile. Scope git status to the
+        # target project so unexpected changes in the same checkout fail the run immediately.
+        $repositoryRootResult = @(& git -C $projectRoot rev-parse --show-toplevel 2>$null)
+        $resolvedRepositoryRoot = $repositoryRootResult | Select-Object -Last 1
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($resolvedRepositoryRoot)) {
+            throw 'Failed to resolve the git repository root. Ensure actions/checkout has run before invoking this action.'
         }
 
-        $pathText
+        $repositoryRoot = $resolvedRepositoryRoot
+        $baseBranch = Resolve-BaseBranch -RepositoryRoot $repositoryRoot
+        if ([string]::IsNullOrWhiteSpace($baseBranch)) {
+            throw 'Failed to resolve the base branch for the bump pull request.'
+        }
+
+        $statusLines = @(& git -C $repositoryRoot status --porcelain --untracked-files=all -- $projectRoot 2>$null)
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to inspect git status under: $projectRoot"
+        }
+
+        $changedPaths = foreach ($line in $statusLines) {
+            if ([string]::IsNullOrWhiteSpace($line)) {
+                continue
+            }
+
+            $pathText = $line.Substring(3).Trim()
+            if ($pathText.StartsWith('"') -and $pathText.EndsWith('"')) {
+                $pathText = $pathText.Trim('"')
+            }
+
+            $pathText
+        }
+
+        $unexpectedPaths = [string[]] @($changedPaths | Where-Object { $_ -notmatch '(^|[\\/])psreq\.lock\.psd1$' })
+        if ($unexpectedPaths.Count -gt 0) {
+            throw "Unexpected changes detected outside psreq.lock.psd1: $($unexpectedPaths -join ', ')"
+        }
+
+        if ((-not $lockfileChanged) -and ($changedPaths | Where-Object { $_ -match '(^|[\\/])psreq\.lock\.psd1$' })) {
+            Write-Warning 'The lockfile differs in git status, but the parsed lockfile data did not change. This usually indicates line-ending or formatting-only churn.'
+        }
+
+        $bumpMetadata = Get-BumpMetadata -RequirementsData $requirementsData -LockfileBeforeData $lockfileBeforeData -LockfileAfterData $lockfileAfterData -LockfileChanged $lockfileChanged
+
+        Write-Host "Lockfile changed: $lockfileChanged"
+
+        [pscustomobject]@{
+            BaseBranch = $baseBranch
+            BumpMetadata = $bumpMetadata
+            LockfileChanged = $lockfileChanged
+            LockfilePath = $lockfilePath
+            RepositoryRoot = $repositoryRoot
+        }
     }
 
-    $unexpectedPaths = [string[]] @($changedPaths | Where-Object { $_ -notmatch '(^|[\\/])psreq\.lock\.psd1$' })
-    if ($unexpectedPaths.Count -gt 0) {
-        throw "Unexpected changes detected outside psreq.lock.psd1: $($unexpectedPaths -join ', ')"
-    }
+    Invoke-InLogGroup 'Outputs' {
+        $changedValue = if ($updateState.LockfileChanged) { 'true' } else { 'false' }
 
-    if ((-not $lockfileChanged) -and ($changedPaths | Where-Object { $_ -match '(^|[\\/])psreq\.lock\.psd1$' })) {
-        Write-Warning 'The lockfile differs in git status, but the parsed lockfile data did not change. This usually indicates line-ending or formatting-only churn.'
-    }
-
-    $bumpMetadata = Get-BumpMetadata -RequirementsData $requirementsData -LockfileBeforeData $lockfileBeforeData -LockfileAfterData $lockfileAfterData -LockfileChanged $lockfileChanged
-
-    Write-Host "Lockfile changed: $lockfileChanged"
-
-    [pscustomobject]@{
-        BaseBranch = $baseBranch
-        BumpMetadata = $bumpMetadata
-        LockfileChanged = $lockfileChanged
-        LockfilePath = $lockfilePath
-        RepositoryRoot = $repositoryRoot
+        Set-ActionOutput -Name 'changed' -Value $changedValue
+        Set-ActionOutput -Name 'project_root' -Value $projectRoot
+        Set-ActionOutput -Name 'repository_root' -Value $updateState.RepositoryRoot
+        Set-ActionOutput -Name 'lockfile_path' -Value $updateState.LockfilePath
+        Set-ActionOutput -Name 'base_branch' -Value $updateState.BaseBranch
+        Set-ActionOutput -Name 'bump_branch_name' -Value $updateState.BumpMetadata.BranchName
+        Set-ActionOutput -Name 'bump_commit_message' -Value $updateState.BumpMetadata.CommitMessage
+        Set-ActionOutput -Name 'bump_pr_title' -Value $updateState.BumpMetadata.PullRequestTitle
+        Set-ActionOutput -Name 'bump_pr_body' -Value $updateState.BumpMetadata.PullRequestBody
     }
 }
 
-Invoke-InLogGroup 'Outputs' {
-    $changedValue = if ($updateState.LockfileChanged) { 'true' } else { 'false' }
-
-    Set-ActionOutput -Name 'changed' -Value $changedValue
-    Set-ActionOutput -Name 'project_root' -Value $projectRoot
-    Set-ActionOutput -Name 'repository_root' -Value $updateState.RepositoryRoot
-    Set-ActionOutput -Name 'lockfile_path' -Value $updateState.LockfilePath
-    Set-ActionOutput -Name 'base_branch' -Value $updateState.BaseBranch
-    Set-ActionOutput -Name 'bump_branch_name' -Value $updateState.BumpMetadata.BranchName
-    Set-ActionOutput -Name 'bump_commit_message' -Value $updateState.BumpMetadata.CommitMessage
-    Set-ActionOutput -Name 'bump_pr_title' -Value $updateState.BumpMetadata.PullRequestTitle
-    Set-ActionOutput -Name 'bump_pr_body' -Value $updateState.BumpMetadata.PullRequestBody
+$invokeParams = @{
+    ProjectPath = $ProjectPath
+    TargetPowerShellEdition = $TargetPowerShellEdition
 }
+
+Invoke-BumpAction @invokeParams
