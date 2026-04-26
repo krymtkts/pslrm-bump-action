@@ -35,6 +35,7 @@ Current preview scope:
 - The target project must contain `psreq.psd1`.
 - The action updates `psreq.lock.psd1` for that project.
 - The token passed to `github-token` must be able to push a branch and create or update pull requests.
+- Pull request operations use GitHub CLI (`gh`). GitHub-hosted runners already include it. Self-hosted runners must provide it.
 - `target-powershell-edition: desktop` requires a Windows runner.
 
 The project root is the directory that contains `psreq.psd1`.
@@ -50,6 +51,10 @@ On each run, the action:
 5. Exposes `result=no_change|created|updated|noop`.
 6. When `result` is not `no_change`, also exposes `bump_branch_name` and `pull_request_number`.
 
+Formatting or line-ending churn in the lockfile does not trigger branch or pull request automation.
+In that case, the action emits a warning.
+It also reports `result=no_change` because the parsed lockfile dependency data did not change.
+
 When the action needs a pull request:
 
 - The action derives the bump branch name from the changed dependency names.
@@ -60,7 +65,7 @@ When the action needs a pull request:
 
 Result values mean:
 
-- `no_change`: The lockfile did not change.
+- `no_change`: The parsed lockfile dependency data did not change. Formatting or line-ending churn can still leave `psreq.lock.psd1` modified in Git status.
 - `created`: The run created a new bump pull request.
 - `updated`: The run updated the existing bump branch or pull request state.
 - `noop`: The lockfile changed semantically, but required no external update.
@@ -199,7 +204,7 @@ pslrm-bump-action and pslrm use independent version numbers.
 Release notes document which pslrm version each action release uses.
 
 Use tag-based references for normal consumption.
-Use `@v0` for the preview series after the preview tag becomes available.
+Use `@v0` for the current preview series.
 
-Until then, reference a branch or commit SHA from another repository for prerelease validation.
-Do not treat it as the long-term public contract.
+Use a branch or commit SHA when you need unreleased changes before the next preview tag.
+Do not treat that prerelease reference as the long-term public contract.

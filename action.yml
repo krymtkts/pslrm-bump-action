@@ -3,7 +3,7 @@ description: Update a pslrm lockfile and open or update a pull request.
 
 inputs:
   project-path:
-    description: Path to the target pslrm project root.
+    description: Path to the target pslrm project root or a path below it. The action resolves the directory that contains psreq.psd1.
     required: false
     default: .
   target-powershell-edition:
