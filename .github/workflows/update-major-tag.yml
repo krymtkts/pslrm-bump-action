@@ -1,0 +1,77 @@
+name: Update Major Tag
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release-specific tag to mirror to its major tag
+        required: true
+        type: string
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  extract-version:
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.tags.outputs.release_tag }}
+      major_tag: ${{ steps.tags.outputs.major_tag }}
+    steps:
+      - name: Resolve release tag and major tag
+        id: tags
+        env:
+          EXACT_VERSION_TAG: ${{ github.event_name == 'workflow_dispatch' &&
+            inputs.release_tag || github.ref_name }}
+        run: |
+          if ($env:EXACT_VERSION_TAG -notmatch '^v\d+\.\d+\.\d+(-[a-zA-Z0-9.-]+)?$') {
+              throw "Release tag must be vX.Y.Z or vX.Y.Z-prerelease. Got '${env:EXACT_VERSION_TAG}'."
+          }
+          $versionText = $env:EXACT_VERSION_TAG.Substring(1)
+          $semanticVersion = $null
+          if (-not [System.Management.Automation.SemanticVersion]::TryParse($versionText, [ref]$semanticVersion)) {
+              throw "Release tag is not a valid semantic version. Got '${env:EXACT_VERSION_TAG}'."
+          }
+
+          $majorTag = "v$($semanticVersion.Major)"
+
+          "release_tag=$env:EXACT_VERSION_TAG" >> $env:GITHUB_OUTPUT
+          "major_tag=$majorTag" >> $env:GITHUB_OUTPUT
+
+  update-major-tag:
+    runs-on: ubuntu-latest
+    needs: extract-version
+    concurrency:
+      group: update-major-tag-${{ needs.extract-version.outputs.major_tag }}
+      cancel-in-progress: true
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.extract-version.outputs.release_tag }}
+          fetch-depth: 1
+
+      - name: Update mutable major tag
+        env:
+          MAJOR_TAG: ${{ needs.extract-version.outputs.major_tag }}
+          RELEASE_TAG: ${{ needs.extract-version.outputs.release_tag }}
+        run: |
+          Write-Host "Updating '${env:MAJOR_TAG}' to point at '${env:RELEASE_TAG}'."
+
+          & git tag --force $env:MAJOR_TAG $env:RELEASE_TAG
+          if ($LASTEXITCODE -ne 0) {
+              throw "Failed to update local tag '${env:MAJOR_TAG}' to point to '${env:RELEASE_TAG}'."
+          }
+
+          & git push origin "refs/tags/${env:MAJOR_TAG}" --force
+          if ($LASTEXITCODE -ne 0) {
+              throw "Failed to push major tag '${env:MAJOR_TAG}' to point to '${env:RELEASE_TAG}'."
+          }
+
+          Write-Host "Mutable major tag '${env:MAJOR_TAG}' now points to '${env:RELEASE_TAG}'."
