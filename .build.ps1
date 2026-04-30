@@ -8,7 +8,7 @@
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', '', Justification = 'Variables are used in script blocks and argument completers')]
 param(
     [Parameter(Position = 0, ParameterSetName = 'Default')]
-    [ValidateSet('Init', 'Clean', 'Lint', 'UnitTest', 'TestAll', 'ReleaseNotes', 'ValidateReleaseMetadata')]
+    [ValidateSet('Init', 'Clean', 'Lint', 'UnitTest', 'TestAll', 'ReleaseNotes', 'ValidateReleaseMetadata', 'Release')]
     [string[]] $Tasks = @('UnitTest'),
 
     [Parameter()]
@@ -16,11 +16,7 @@ param(
 
     [Parameter()]
     [ValidateNotNullOrEmpty()]
-    [string] $ReleaseTag,
-
-    [Parameter()]
-    [ValidateNotNullOrEmpty()]
-    [string] $ReleaseNotesOutputPath = '.artifacts/release-notes.md'
+    [string] $ReleaseTag
 )
 
 # If invoked directly (not dot-sourced by Invoke-Build), hand off execution to Invoke-Build through pslrm.
@@ -39,10 +35,6 @@ if ($MyInvocation.InvocationName -ne '.') {
     if ($PSBoundParameters.ContainsKey('ReleaseTag')) {
         $invokeBuildArguments += '-ReleaseTag'
         $invokeBuildArguments += $ReleaseTag
-    }
-    if ($PSBoundParameters.ContainsKey('ReleaseNotesOutputPath')) {
-        $invokeBuildArguments += '-ReleaseNotesOutputPath'
-        $invokeBuildArguments += $ReleaseNotesOutputPath
     }
 
     try {
@@ -75,6 +67,7 @@ $ScriptsPath = Join-Path $PSScriptRoot 'scripts'
 $TestsPath = Join-Path $PSScriptRoot 'tests'
 $ToolsPath = Join-Path $PSScriptRoot 'tools'
 $ArtifactsPath = Join-Path $PSScriptRoot '.artifacts'
+$ReleaseNotesPath = Join-Path $ArtifactsPath 'release-notes.md'
 $LintPaths = @(
     (Join-Path $PSScriptRoot '.build.ps1')
     $ScriptsPath
@@ -158,15 +151,38 @@ Task ReleaseNotes ValidateReleaseMetadata, {
 
     $version = ConvertFrom-ReleaseTagToVersion -ReleaseTag $ReleaseTag
     $releaseNotes = Get-ChangelogEntry -Version $version
-    $resolvedOutputPath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot $ReleaseNotesOutputPath))
-    $outputDirectory = Split-Path -Parent $resolvedOutputPath
+    $outputDirectory = Split-Path -Parent $ReleaseNotesPath
     if (-not [string]::IsNullOrWhiteSpace($outputDirectory)) {
         New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
     }
 
-    Set-Content -LiteralPath $resolvedOutputPath -Value $releaseNotes -NoNewline
-    Write-Host "Release notes written to: $resolvedOutputPath" -ForegroundColor Green
+    Set-Content -LiteralPath $ReleaseNotesPath -Value $releaseNotes -NoNewline
+    Write-Host "Release notes written to: $ReleaseNotesPath" -ForegroundColor Green
+}
+
+Task Release ReleaseNotes, {
+    Write-Host 'Creating or updating draft GitHub Release.' -ForegroundColor Yellow
+
+    if (-not (Test-Path -LiteralPath $ReleaseNotesPath -PathType Leaf)) {
+        throw "Release notes file not found: $ReleaseNotesPath"
+    }
+
+    Assert-CleanGitWorktree
+
+    $releaseNotes = Get-Content -LiteralPath $ReleaseNotesPath -Raw
+    $tagResult = Set-GitReleaseTag -ReleaseTag $ReleaseTag -ReleaseNotes $releaseNotes
+    if ($tagResult.TagCreated) {
+        Write-Host "Created local release tag '$ReleaseTag'." -ForegroundColor Green
+    }
+    if ($tagResult.TagPushed) {
+        Write-Host "Pushed release tag '$ReleaseTag' to origin." -ForegroundColor Green
+    }
+    else {
+        Write-Host "Release tag '$ReleaseTag' already exists on origin." -ForegroundColor Green
+    }
+
+    $draftRelease = Set-GitHubDraftRelease -ReleaseTag $ReleaseTag -ReleaseNotesPath $ReleaseNotesPath -IsPrerelease:$ReleaseTag.Contains('-')
+    Write-Host "Draft GitHub release ready: $($draftRelease.url)" -ForegroundColor Green
 }
 
 Task . UnitTest
-
