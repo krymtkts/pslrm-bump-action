@@ -19,11 +19,16 @@ param(
     [string] $ReleaseTag
 )
 
+# Required PowerShell version check.
+if ($PSVersionTable.PSVersion -lt [Version]'5.1') {
+    throw "This build requires PowerShell 5.1+. Current: $($PSVersionTable.PSVersion)."
+}
+
+. (Join-Path $PSScriptRoot 'tools\Build.Helpers.ps1')
+
 # If invoked directly (not dot-sourced by Invoke-Build), hand off execution to Invoke-Build through pslrm.
 if ($MyInvocation.InvocationName -ne '.') {
-    if (-not (Get-Command -Name 'Invoke-PSLResource' -ErrorAction SilentlyContinue)) {
-        throw 'Invoke-PSLResource is required to run .build.ps1 directly. Import pslrm first, or invoke this file through Invoke-Build.'
-    }
+    Assert-CommandAvailable -Name 'Invoke-PSLResource'
 
     $invokeBuildArguments = @(
         $Tasks
@@ -47,17 +52,10 @@ if ($MyInvocation.InvocationName -ne '.') {
     }
 }
 
-# Required PowerShell version check.
-if ($PSVersionTable.PSVersion -lt [Version]'5.1') {
-    throw "This build requires PowerShell 5.1+. Current: $($PSVersionTable.PSVersion)."
-}
-
 # --- Setup ---
-
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-. (Join-Path $PSScriptRoot 'tools\Build.Helpers.ps1')
 . (Join-Path $PSScriptRoot 'tools\ReleaseNotes.Helpers.ps1')
 
 $ActionMetadataPath = Join-Path $PSScriptRoot 'action.yml'
