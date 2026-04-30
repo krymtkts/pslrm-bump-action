@@ -4,6 +4,9 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'GitHubActions.Helper.ps1')
 
 function Invoke-BumpPullRequest {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'BaseBranch', Justification = 'Used in nested script blocks passed to Invoke-InLogGroup.')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'BumpBranchName', Justification = 'Used in nested script blocks passed to Invoke-InLogGroup.')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'RepositoryFullName', Justification = 'Used in nested script blocks passed to Invoke-InLogGroup.')]
     param(
         [Parameter(Mandatory)]
         [string] $BaseBranch,
@@ -23,12 +26,8 @@ function Invoke-BumpPullRequest {
 
     $existingPullRequestState = Invoke-InLogGroup 'Inspect existing bump pull request' {
         Write-Host "Looking for an open pull request from '$BumpBranchName' into '$BaseBranch'."
-        $existingPullRequestNumber = @(
-            & gh pr list --repo $RepositoryFullName --base $BaseBranch --head $BumpBranchName --state open --json number --jq '.[0].number' 2>$null
-        ) | Select-Object -Last 1
-        if ($LASTEXITCODE -ne 0) {
-            throw 'Failed to query existing bump pull requests.'
-        }
+        $existingPullRequestListResult = runx 'Failed to query existing bump pull requests.' gh pr list --repo $RepositoryFullName --base $BaseBranch --head $BumpBranchName --state open --json number --jq '.[0].number'
+        $existingPullRequestNumber = if ($existingPullRequestListResult.Output.Count -eq 0) { '' } else { [string] $existingPullRequestListResult.Output[-1] }
 
         if ([string]::IsNullOrWhiteSpace($existingPullRequestNumber)) {
             [pscustomobject]@{
@@ -40,10 +39,9 @@ function Invoke-BumpPullRequest {
             return
         }
 
-        $existingPullRequestJson = @(
-            & gh pr view $existingPullRequestNumber --repo $RepositoryFullName --json 'title,body' 2>$null
-        ) | Select-Object -Last 1
-        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($existingPullRequestJson)) {
+        $existingPullRequestViewResult = runx "Failed to inspect bump pull request #$existingPullRequestNumber." gh pr view $existingPullRequestNumber --repo $RepositoryFullName --json 'title,body'
+        $existingPullRequestJson = $existingPullRequestViewResult.Output -join [System.Environment]::NewLine
+        if ([string]::IsNullOrWhiteSpace($existingPullRequestJson)) {
             throw "Failed to inspect bump pull request #$existingPullRequestNumber."
         }
 
@@ -61,15 +59,11 @@ function Invoke-BumpPullRequest {
     if ([string]::IsNullOrWhiteSpace($existingPullRequestState.Number)) {
         $pullRequestNumber = Invoke-InLogGroup 'Create bump pull request' {
             Write-Host "Creating a new bump pull request with title '$PullRequestTitle'."
-            & gh pr create --repo $RepositoryFullName --base $BaseBranch --head $BumpBranchName --title $PullRequestTitle --body $PullRequestBody
-            if ($LASTEXITCODE -ne 0) {
-                throw 'Failed to create the bump pull request.'
-            }
+            $null = runx 'Failed to create the bump pull request.' gh pr create --repo $RepositoryFullName --base $BaseBranch --head $BumpBranchName --title $PullRequestTitle --body $PullRequestBody
 
-            $createdPullRequestNumber = @(
-                & gh pr list --repo $RepositoryFullName --base $BaseBranch --head $BumpBranchName --state open --json number --jq '.[0].number' 2>$null
-            ) | Select-Object -Last 1
-            if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($createdPullRequestNumber)) {
+            $createdPullRequestListResult = runx 'Failed to resolve the created bump pull request number.' gh pr list --repo $RepositoryFullName --base $BaseBranch --head $BumpBranchName --state open --json number --jq '.[0].number'
+            $createdPullRequestNumber = if ($createdPullRequestListResult.Output.Count -eq 0) { '' } else { [string] $createdPullRequestListResult.Output[-1] }
+            if ([string]::IsNullOrWhiteSpace($createdPullRequestNumber)) {
                 throw 'Failed to resolve the created bump pull request number.'
             }
 
@@ -88,10 +82,7 @@ function Invoke-BumpPullRequest {
         else {
             Invoke-InLogGroup 'Update bump pull request' {
                 Write-Host "Updating existing bump pull request #$pullRequestNumber."
-                & gh pr edit $pullRequestNumber --repo $RepositoryFullName --title $PullRequestTitle --body $PullRequestBody
-                if ($LASTEXITCODE -ne 0) {
-                    throw "Failed to update bump pull request #$pullRequestNumber."
-                }
+                $null = runx "Failed to update bump pull request #$pullRequestNumber." gh pr edit $pullRequestNumber --repo $RepositoryFullName --title $PullRequestTitle --body $PullRequestBody
 
                 Write-Host "Bump pull request #$pullRequestNumber updated."
             }

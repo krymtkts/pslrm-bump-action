@@ -231,7 +231,7 @@ function Get-CurrentBranchName {
         [string] $RepositoryRoot
     )
 
-    $branchNameResult = gitr -C $RepositoryRoot branch --show-current
+    $branchNameResult = run git -C $RepositoryRoot branch --show-current
     $resolvedBranchName = [string] ($branchNameResult.Output | Select-Object -Last 1)
     if ($branchNameResult.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($resolvedBranchName)) {
         return ''
@@ -310,7 +310,7 @@ function Invoke-BumpAction {
 
         # NOTE: The action is only allowed to modify the lockfile. Scope git status to the
         # target project so unexpected changes in the same checkout fail the run immediately.
-        $repositoryRootResult = gitr -C $projectRoot rev-parse --show-toplevel
+        $repositoryRootResult = run git -C $projectRoot rev-parse --show-toplevel
         $resolvedRepositoryRoot = [string] ($repositoryRootResult.Output | Select-Object -Last 1)
         if ($repositoryRootResult.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($resolvedRepositoryRoot)) {
             throw 'Failed to resolve the git repository root. Ensure actions/checkout has run before invoking this action.'
@@ -322,7 +322,7 @@ function Invoke-BumpAction {
             throw 'Failed to resolve the base branch for the bump pull request.'
         }
 
-        $statusResult = gitx "Failed to inspect git status under: $projectRoot" -C $repositoryRoot status --porcelain --untracked-files=all -- $projectRoot
+        $statusResult = runx "Failed to inspect git status under: $projectRoot" git -C $repositoryRoot status --porcelain --untracked-files=all -- $projectRoot
         $statusLines = @($statusResult.Output)
 
         $changedPaths = foreach ($line in $statusLines) {

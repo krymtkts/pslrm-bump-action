@@ -61,7 +61,7 @@ function Invoke-BumpBranchPush {
         # NOTE: A PAT can trigger follow-up workflows here; the default GITHUB_TOKEN usually cannot.
         & git -C $RepositoryRoot remote set-url origin "https://x-access-token:$GitHubToken@github.com/$RepositoryFullName.git"
 
-        $localLockfileBlobResult = gitx "Failed to hash '$gitRelativeLockfilePath'." -C $RepositoryRoot hash-object -- $gitRelativeLockfilePath
+        $localLockfileBlobResult = runx "Failed to hash '$gitRelativeLockfilePath'." git -C $RepositoryRoot hash-object -- $gitRelativeLockfilePath
         [pscustomobject]@{
             LocalLockfileBlob = [string] ($localLockfileBlobResult.Output | Select-Object -Last 1)
         }
@@ -70,7 +70,7 @@ function Invoke-BumpBranchPush {
     $localLockfileBlob = $prepareState.LocalLockfileBlob
 
     $remoteInspectionState = Invoke-InLogGroup 'Inspect remote bump branch' {
-        $remoteHeadResult = gitx "Failed to inspect remote branch '$BumpBranchName' before push." -C $RepositoryRoot ls-remote --heads origin "refs/heads/$BumpBranchName"
+        $remoteHeadResult = runx "Failed to inspect remote branch '$BumpBranchName' before push." git -C $RepositoryRoot ls-remote --heads origin "refs/heads/$BumpBranchName"
 
         $existingRemoteCommit = $null
         $reuseExistingBranch = $false
@@ -83,9 +83,9 @@ function Invoke-BumpBranchPush {
             Write-Host "Remote branch '$BumpBranchName' exists at '$existingRemoteCommit'."
 
             $remoteTrackingRef = "refs/remotes/origin/$BumpBranchName"
-            $null = gitx "Failed to fetch remote branch '$BumpBranchName' for comparison." -C $RepositoryRoot fetch --no-tags --depth=1 origin "refs/heads/${BumpBranchName}:$remoteTrackingRef"
+            $null = runx "Failed to fetch remote branch '$BumpBranchName' for comparison." git -C $RepositoryRoot fetch --no-tags --depth=1 origin "refs/heads/${BumpBranchName}:$remoteTrackingRef"
 
-            $remoteLockfileBlobResult = gitr -C $RepositoryRoot rev-parse "${remoteTrackingRef}:$gitRelativeLockfilePath"
+            $remoteLockfileBlobResult = run git -C $RepositoryRoot rev-parse "${remoteTrackingRef}:$gitRelativeLockfilePath"
             if (($remoteLockfileBlobResult.ExitCode -eq 0) -and ([string] ($remoteLockfileBlobResult.Output | Select-Object -Last 1) -ceq $localLockfileBlob)) {
                 Write-Host "Remote branch '$BumpBranchName' already contains the desired lockfile update. Reusing it."
                 Write-GitHubAnnotation -Label Notice -Message "Remote branch '$BumpBranchName' already contains the desired lockfile update. Skipping commit and push."
@@ -115,14 +115,14 @@ function Invoke-BumpBranchPush {
 
     Invoke-InLogGroup 'Commit updated lockfile' {
         Write-Host "Preparing bump branch '$BumpBranchName'."
-        $switchToLocalBranchResult = gitx "Failed to prepare bump branch '$BumpBranchName'." -C $RepositoryRoot switch --force-create $BumpBranchName
+        $switchToLocalBranchResult = runx "Failed to prepare bump branch '$BumpBranchName'." git -C $RepositoryRoot switch --force-create $BumpBranchName
         Write-GitOutput -Lines $switchToLocalBranchResult.Output
 
         Write-Host "Staging updated lockfile '$gitRelativeLockfilePath'."
         & git -C $RepositoryRoot add -- $gitRelativeLockfilePath
 
         Write-Host "Creating bump commit '$BumpCommitMessage'."
-        $commitResult = gitx "Failed to create bump commit '$BumpCommitMessage'." -C $RepositoryRoot commit --message $BumpCommitMessage
+        $commitResult = runx "Failed to create bump commit '$BumpCommitMessage'." git -C $RepositoryRoot commit --message $BumpCommitMessage
         Write-GitOutput -Lines $commitResult.Output
     }
 
@@ -135,7 +135,7 @@ function Invoke-BumpBranchPush {
 
     Invoke-InLogGroup 'Push bump branch' {
         Write-Host "Pushing bump branch '$BumpBranchName' to '$RepositoryFullName'."
-        $pushResult = gitr -C $RepositoryRoot push $leaseArgument --set-upstream origin $BumpBranchName
+        $pushResult = run git -C $RepositoryRoot push $leaseArgument --set-upstream origin $BumpBranchName
         Write-GitOutput -Lines $pushResult.Output
         if ($pushResult.ExitCode -ne 0) {
             $pushErrorText = (@($pushResult.Output) -join "`n")
@@ -146,7 +146,6 @@ function Invoke-BumpBranchPush {
             }
 
             $details = Get-NonEmptyStringLines -Lines $pushResult.Output
-
             if ($details.Count -gt 0) {
                 throw "Failed to push bump branch '$BumpBranchName'.`n$($details -join "`n")"
             }

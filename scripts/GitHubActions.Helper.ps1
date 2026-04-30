@@ -83,8 +83,8 @@ function Get-NonEmptyStringLines {
         [object[]] $Lines
     )
 
-    @(
-        foreach ($line in @($Lines)) {
+    , @(
+        foreach ($line in $Lines) {
             $text = [string] $line
             if (-not [string]::IsNullOrWhiteSpace($text)) {
                 $text
@@ -93,13 +93,20 @@ function Get-NonEmptyStringLines {
     )
 }
 
-function gitr {
+function run {
     param(
         [Parameter(ValueFromRemainingArguments)]
-        [object[]] $Arguments
+        [object[]] $Invocation
     )
 
-    $output = @(& git @Arguments 2>&1)
+    if ($Invocation.Count -eq 0) {
+        throw 'A command name is required.'
+    }
+
+    $commandName = [string] $Invocation[0]
+    $arguments = if ($Invocation.Count -eq 1) { @() } else { $Invocation[1..($Invocation.Count - 1)] }
+
+    $output = @(& $commandName @arguments 2>&1)
     $exitCode = $LASTEXITCODE
 
     [pscustomobject]@{
@@ -108,22 +115,21 @@ function gitr {
     }
 }
 
-function gitx {
+function runx {
     param(
         [Parameter(Mandatory, Position = 0)]
         [string] $FailureMessage,
 
         [Parameter(ValueFromRemainingArguments, Position = 1)]
-        [object[]] $Arguments
+        [object[]] $Invocation
     )
 
-    $result = gitr @Arguments
+    $result = run @Invocation
     if ($result.ExitCode -eq 0) {
         return $result
     }
 
     $details = Get-NonEmptyStringLines -Lines $result.Output
-
     if ($details.Count -gt 0) {
         throw "$FailureMessage`n$($details -join "`n")"
     }

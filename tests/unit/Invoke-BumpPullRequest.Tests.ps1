@@ -73,7 +73,7 @@ Describe 'Invoke-BumpPullRequest' {
             }
         }
 
-        function Get-RecordedGhCommands {
+        function Get-RecordedGhCommand {
             @(
                 foreach ($commandArguments in $global:GhCommands) {
                     $commandArguments -join ' '
@@ -81,7 +81,7 @@ Describe 'Invoke-BumpPullRequest' {
             )
         }
 
-        function Get-RecordedGhCommandsContaining {
+        function Get-RecordedGhCommandContaining {
             param(
                 [Parameter(Mandatory)]
                 [string] $Subcommand
@@ -115,8 +115,9 @@ Describe 'Invoke-BumpPullRequest' {
             }
         }
 
-        foreach ($functionName in 'gh', 'Get-RecordedGhCommands', 'Get-RecordedGhCommandsContaining') {
-            Remove-Item "Function:\global:$functionName" -ErrorAction SilentlyContinue
+        Remove-Item Function:\global:gh -ErrorAction SilentlyContinue
+        foreach ($functionName in 'Get-RecordedGhCommand', 'Get-RecordedGhCommandContaining') {
+            Remove-Item "Function:\$functionName" -ErrorAction SilentlyContinue
         }
 
         foreach ($variableName in 'GhCommands', 'CreatedPullRequestNumber', 'CreateCalled', 'ExistingPullRequestBody', 'ExistingPullRequestNumber', 'ExistingPullRequestTitle') {
@@ -127,7 +128,7 @@ Describe 'Invoke-BumpPullRequest' {
     It 'creates a new pull request when no open pull request exists' {
         & $script:scriptPath
 
-        $commands = Get-RecordedGhCommands
+        $commands = Get-RecordedGhCommand
         $outputLines = Get-Content -Path $env:GITHUB_OUTPUT
 
         @($commands | Where-Object { $_ -match ' create ' }).Count | Should -Be 1
@@ -143,8 +144,8 @@ Describe 'Invoke-BumpPullRequest' {
 
         & $script:scriptPath
 
-        $commands = Get-RecordedGhCommands
-        $viewCommands = @(Get-RecordedGhCommandsContaining -Subcommand 'view')
+        $commands = Get-RecordedGhCommand
+        $viewCommands = @(Get-RecordedGhCommandContaining -Subcommand 'view')
         $outputLines = Get-Content -Path $env:GITHUB_OUTPUT
 
         $viewCommands.Count | Should -Be 1
@@ -161,8 +162,8 @@ Describe 'Invoke-BumpPullRequest' {
 
         & $script:scriptPath
 
-        $commands = Get-RecordedGhCommands
-        $viewCommands = @(Get-RecordedGhCommandsContaining -Subcommand 'view')
+        $commands = Get-RecordedGhCommand
+        $viewCommands = @(Get-RecordedGhCommandContaining -Subcommand 'view')
         $outputLines = Get-Content -Path $env:GITHUB_OUTPUT
 
         $viewCommands.Count | Should -Be 1

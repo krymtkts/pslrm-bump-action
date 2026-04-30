@@ -20,7 +20,7 @@ function Assert-CleanGitWorktree {
     [CmdletBinding()]
     param()
 
-    $statusLines = (gitx 'Failed to inspect git working tree status.' status --porcelain=v1 --untracked-files=all).Output
+    $statusLines = (runx 'Failed to inspect git working tree status.' git status --porcelain=v1 --untracked-files=all).Output
     if ($statusLines.Count -gt 0) {
         throw "Git working tree must be clean before release. Remaining changes: $($statusLines -join '; ')"
     }
@@ -36,7 +36,7 @@ function Get-LocalGitTagState {
     )
 
     $tagRef = "refs/tags/$TagName"
-    $tagOutput = (gitx "Failed to inspect local tag '$TagName'." for-each-ref '--format=%(objectname)' $tagRef).Output
+    $tagOutput = (runx "Failed to inspect local tag '$TagName'." git for-each-ref '--format=%(objectname)' $tagRef).Output
     if ($tagOutput.Count -eq 0) {
         [pscustomobject]@{
             Exists = $false
@@ -65,7 +65,7 @@ function Test-LocalGitTagAtHead {
         [string] $TagName
     )
 
-    (gitx "Failed to inspect local tag '$TagName' at HEAD." tag --points-at HEAD --list $TagName).Output.Count -gt 0
+    (runx "Failed to inspect local tag '$TagName' at HEAD." git tag --points-at HEAD --list $TagName).Output.Count -gt 0
 }
 
 function Get-RemoteGitTagState {
@@ -82,7 +82,7 @@ function Get-RemoteGitTagState {
     )
 
     $tagRef = "refs/tags/$TagName"
-    $remoteTagOutput = (gitx "Failed to inspect remote tag '$TagName' on '$RemoteName'." ls-remote --refs --tags $RemoteName $tagRef).Output
+    $remoteTagOutput = (runx "Failed to inspect remote tag '$TagName' on '$RemoteName'." git ls-remote --refs --tags $RemoteName $tagRef).Output
     $remoteTagLine = if ($remoteTagOutput.Count -eq 0) { $null } else { [string] $remoteTagOutput[-1] }
     if ([string]::IsNullOrWhiteSpace($remoteTagLine)) {
         [pscustomobject]@{
@@ -142,7 +142,7 @@ function Set-GitReleaseTag {
             throw "Remote tag '$ReleaseTag' already exists on '$RemoteName', but the local tag is missing. Fetch it or create a matching local tag before retrying."
         }
 
-        $null = gitx "Failed to create signed tag '$ReleaseTag'." tag --sign --cleanup=verbatim $ReleaseTag --message $ReleaseNotes
+        $null = runx "Failed to create signed tag '$ReleaseTag'." git tag --sign --cleanup=verbatim $ReleaseTag --message $ReleaseNotes
         $localTag = Get-LocalGitTagState -TagName $ReleaseTag
         if (-not $localTag.Exists) {
             throw "Signed tag '$ReleaseTag' was created, but could not be reloaded."
@@ -155,7 +155,7 @@ function Set-GitReleaseTag {
         }
     }
     else {
-        $null = gitx "Failed to push release tag '$ReleaseTag' to remote '$RemoteName'." push $RemoteName "refs/tags/$ReleaseTag"
+        $null = runx "Failed to push release tag '$ReleaseTag' to remote '$RemoteName'." git push $RemoteName "refs/tags/$ReleaseTag"
     }
 
     [pscustomobject]@{
@@ -173,20 +173,21 @@ function Get-GitHubReleaseInfo {
         [string] $ReleaseTag
     )
 
-    $output = @(
-        & gh release view $ReleaseTag --json 'url,isDraft,isPrerelease,tagName' 2>&1
-    )
-    $ghExitCode = $LASTEXITCODE
-    if ($ghExitCode -ne 0) {
-        $message = (@($output) | ForEach-Object { [string] $_ }) -join [System.Environment]::NewLine
-        if ($message -match 'release not found' -or $message -match '\b404\b') {
+    $releaseViewResult = run gh release view $ReleaseTag --json 'url,isDraft,isPrerelease,tagName'
+    if ($releaseViewResult.ExitCode -ne 0) {
+        $errorText = (Get-NonEmptyStringLines -Lines $releaseViewResult.Output) -join "`n"
+        if ($errorText -match 'release not found' -or $errorText -match '\b404\b') {
             return $null
         }
 
-        throw "Failed to inspect GitHub release '$ReleaseTag'. $message"
+        if (-not [string]::IsNullOrWhiteSpace($errorText)) {
+            throw "Failed to inspect GitHub release '$ReleaseTag'.`n$errorText"
+        }
+
+        throw "Failed to inspect GitHub release '$ReleaseTag'."
     }
 
-    $json = (@($output) | ForEach-Object { [string] $_ }) -join [System.Environment]::NewLine
+    $json = $releaseViewResult.Output -join [System.Environment]::NewLine
     if ([string]::IsNullOrWhiteSpace($json)) {
         throw "GitHub release '$ReleaseTag' was found, but no metadata was returned."
     }
@@ -223,24 +224,15 @@ function Set-GitHubDraftRelease {
     $releaseInfo = Get-GitHubReleaseInfo -ReleaseTag $ReleaseTag
     if ($null -eq $releaseInfo) {
         $createArguments = @(
-            'release', 'create', $ReleaseTag,
-            '--verify-tag',
-            '--draft',
-            '--title', $ReleaseTag,
+            'release', 'create', $ReleaseTag
+            '--verify-tag', '--draft', '--title', $ReleaseTag
             '--notes-file', $ReleaseNotesPath
         )
         if ($IsPrerelease) {
             $createArguments += '--prerelease'
         }
 
-        $createOutput = @(
-            & gh @createArguments 2>&1
-        )
-        if ($LASTEXITCODE -ne 0) {
-            $message = (@($createOutput) | ForEach-Object { [string] $_ }) -join [System.Environment]::NewLine
-            throw "Failed to create draft GitHub release '$ReleaseTag'. $message"
-        }
-
+        $null = runx "Failed to create draft GitHub release '$ReleaseTag'." gh @createArguments
         $releaseInfo = Get-GitHubReleaseInfo -ReleaseTag $ReleaseTag
         if ($null -eq $releaseInfo) {
             throw "Draft GitHub release '$ReleaseTag' was created, but could not be reloaded."
@@ -254,22 +246,15 @@ function Set-GitHubDraftRelease {
     }
 
     $editArguments = @(
-        'release', 'edit', $ReleaseTag,
-        '--title', $ReleaseTag,
+        'release', 'edit', $ReleaseTag
+        '--title', $ReleaseTag
         '--notes-file', $ReleaseNotesPath
     )
     if ([bool] $releaseInfo.isPrerelease -ne [bool] $IsPrerelease) {
         $editArguments += "--prerelease=$(([bool] $IsPrerelease).ToString().ToLowerInvariant())"
     }
 
-    $editOutput = @(
-        & gh @editArguments 2>&1
-    )
-    if ($LASTEXITCODE -ne 0) {
-        $message = (@($editOutput) | ForEach-Object { [string] $_ }) -join [System.Environment]::NewLine
-        throw "Failed to update draft GitHub release '$ReleaseTag'. $message"
-    }
-
+    $null = runx "Failed to update draft GitHub release '$ReleaseTag'." gh @editArguments
     $updatedReleaseInfo = Get-GitHubReleaseInfo -ReleaseTag $ReleaseTag
     if ($null -eq $updatedReleaseInfo) {
         throw "Draft GitHub release '$ReleaseTag' was updated, but could not be reloaded."
