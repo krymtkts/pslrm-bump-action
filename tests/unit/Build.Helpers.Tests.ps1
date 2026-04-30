@@ -175,6 +175,108 @@ Describe 'Get-RemoteGitTagState' {
     }
 }
 
+Describe 'Get-GitReleaseTagPlan' {
+    BeforeEach {
+        $script:GitCommands = [System.Collections.Generic.List[string[]]]::new()
+        $script:LocalTagObjectId = $null
+        $script:RemoteTagObjectId = $null
+        $script:LocalTagPointsAtHead = $false
+
+        function global:git {
+            param(
+                [Parameter(ValueFromRemainingArguments)]
+                [object[]] $Arguments
+            )
+
+            $recordedArguments = [string[]] @(
+                foreach ($argument in $Arguments) {
+                    [string] $argument
+                }
+            )
+            $script:GitCommands.Add($recordedArguments)
+            $global:LASTEXITCODE = 0
+
+            switch ($recordedArguments[0]) {
+                'for-each-ref' {
+                    if ($null -eq $script:LocalTagObjectId) {
+                        return
+                    }
+
+                    $script:LocalTagObjectId
+                    return
+                }
+                'tag' {
+                    if ($recordedArguments[1] -ceq '--points-at') {
+                        if ($script:LocalTagPointsAtHead) {
+                            $recordedArguments[-1]
+                        }
+
+                        return
+                    }
+                }
+                'ls-remote' {
+                    if ($null -ne $script:RemoteTagObjectId) {
+                        "$($script:RemoteTagObjectId)`t$($recordedArguments[4])"
+                    }
+
+                    return
+                }
+            }
+        }
+    }
+
+    AfterEach {
+        Remove-Item Function:\global:git -ErrorAction SilentlyContinue
+        foreach ($variableName in 'GitCommands', 'LocalTagObjectId', 'RemoteTagObjectId', 'LocalTagPointsAtHead') {
+            Remove-Item "Variable:\script:$variableName" -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'plans to create and push a release tag when no tag exists yet' {
+        $plan = Get-GitReleaseTagPlan -ReleaseTag 'v0.0.1-alpha'
+
+        $plan.CreateLocalTag | Should -BeTrue
+        $plan.PushRemoteTag | Should -BeTrue
+        $plan.LocalTagExists | Should -BeFalse
+        $plan.RemoteTagExists | Should -BeFalse
+    }
+
+    It 'plans to reuse the local tag and push it when the remote tag is missing' {
+        $script:LocalTagObjectId = 'tag-object-id'
+        $script:LocalTagPointsAtHead = $true
+
+        $plan = Get-GitReleaseTagPlan -ReleaseTag 'v0.0.1-alpha'
+
+        $plan.CreateLocalTag | Should -BeFalse
+        $plan.PushRemoteTag | Should -BeTrue
+    }
+
+    It 'plans no tag changes when matching local and remote tags already exist' {
+        $script:LocalTagObjectId = 'tag-object-id'
+        $script:LocalTagPointsAtHead = $true
+        $script:RemoteTagObjectId = 'tag-object-id'
+
+        $plan = Get-GitReleaseTagPlan -ReleaseTag 'v0.0.1-alpha'
+
+        $plan.CreateLocalTag | Should -BeFalse
+        $plan.PushRemoteTag | Should -BeFalse
+    }
+
+    It 'fails when the local tag does not point at HEAD' {
+        $script:LocalTagObjectId = 'tag-object-id'
+
+        { Get-GitReleaseTagPlan -ReleaseTag 'v0.0.1-alpha' } | Should -Throw '*does not point at HEAD*'
+    }
+
+    It 'fails when the remote tag does not match the local tag' {
+        $script:LocalTagObjectId = 'local-tag-object-id'
+        $script:LocalTagPointsAtHead = $true
+        $script:RemoteTagObjectId = 'remote-tag-object-id'
+
+        { Get-GitReleaseTagPlan -ReleaseTag 'v0.0.1-alpha' } | Should -Throw '*does not match the local signed tag*'
+    }
+}
+
 Describe 'Set-GitReleaseTag' {
     BeforeEach {
         $script:GitCommands = [System.Collections.Generic.List[string[]]]::new()
@@ -241,7 +343,9 @@ Describe 'Set-GitReleaseTag' {
     }
 
     It 'creates and pushes a signed tag when the release tag does not exist yet' {
-        $result = Set-GitReleaseTag -ReleaseTag 'v0.0.1-alpha' -ReleaseNotes 'Body text.'
+        $plan = Get-GitReleaseTagPlan -ReleaseTag 'v0.0.1-alpha'
+
+        $result = Set-GitReleaseTag -ReleaseTag 'v0.0.1-alpha' -ReleaseNotes 'Body text.' -Plan $plan
 
         $result.TagCreated | Should -BeTrue
         $result.TagPushed | Should -BeTrue
@@ -264,11 +368,25 @@ Describe 'Set-GitReleaseTag' {
         )
     }
 
+    It 'applies a precomputed release tag plan without re-reading the remote tag state' {
+        $plan = Get-GitReleaseTagPlan -ReleaseTag 'v0.0.1-alpha'
+
+        $result = Set-GitReleaseTag -ReleaseTag 'v0.0.1-alpha' -ReleaseNotes 'Body text.' -Plan $plan
+
+        $result.TagCreated | Should -BeTrue
+        $result.TagPushed | Should -BeTrue
+        @($script:GitCommands | Where-Object { $_[0] -ceq 'ls-remote' }).Count | Should -Be 1
+        @($script:GitCommands | Where-Object { $_[0] -ceq 'tag' -and $_[1] -ceq '--sign' }).Count | Should -Be 1
+        @($script:GitCommands | Where-Object { $_[0] -ceq 'push' }).Count | Should -Be 1
+    }
+
     It 'reuses an existing local tag and only pushes it when the remote tag is missing' {
         $script:LocalTagObjectId = 'tag-object-id'
         $script:LocalTagPointsAtHead = $true
 
-        $result = Set-GitReleaseTag -ReleaseTag 'v0.0.1-alpha' -ReleaseNotes 'Body text.'
+        $plan = Get-GitReleaseTagPlan -ReleaseTag 'v0.0.1-alpha'
+
+        $result = Set-GitReleaseTag -ReleaseTag 'v0.0.1-alpha' -ReleaseNotes 'Body text.' -Plan $plan
 
         $result.TagCreated | Should -BeFalse
         $result.TagPushed | Should -BeTrue
@@ -282,26 +400,143 @@ Describe 'Set-GitReleaseTag' {
         $script:LocalTagPointsAtHead = $true
         $script:RemoteTagObjectId = 'tag-object-id'
 
-        $result = Set-GitReleaseTag -ReleaseTag 'v0.0.1-alpha' -ReleaseNotes 'Body text.'
+        $plan = Get-GitReleaseTagPlan -ReleaseTag 'v0.0.1-alpha'
+
+        $result = Set-GitReleaseTag -ReleaseTag 'v0.0.1-alpha' -ReleaseNotes 'Body text.' -Plan $plan
 
         $result.TagCreated | Should -BeFalse
         $result.TagPushed | Should -BeFalse
         @($script:GitCommands | Where-Object { $_[0] -ceq 'tag' -and $_[1] -ceq '--sign' }).Count | Should -Be 0
         @($script:GitCommands | Where-Object { $_[0] -ceq 'push' }).Count | Should -Be 0
     }
+}
 
-    It 'fails when the local tag does not point at HEAD' {
-        $script:LocalTagObjectId = 'tag-object-id'
+Describe 'Get-GitHubDraftReleasePlan' {
+    BeforeEach {
+        $script:GhCommands = [System.Collections.Generic.List[string[]]]::new()
+        $script:ExistingRelease = $null
 
-        { Set-GitReleaseTag -ReleaseTag 'v0.0.1-alpha' -ReleaseNotes 'Body text.' } | Should -Throw '*does not point at HEAD*'
+        function global:gh {
+            param(
+                [Parameter(ValueFromRemainingArguments)]
+                [object[]] $Arguments
+            )
+
+            $recordedArguments = [string[]] @(
+                foreach ($argument in $Arguments) {
+                    [string] $argument
+                }
+            )
+            $script:GhCommands.Add($recordedArguments)
+            $global:LASTEXITCODE = 0
+
+            if (($recordedArguments[0] -ceq 'release') -and ($recordedArguments[1] -ceq 'view')) {
+                if ($null -eq $script:ExistingRelease) {
+                    $global:LASTEXITCODE = 1
+                    'release not found'
+                    return
+                }
+
+                $script:ExistingRelease | ConvertTo-Json -Compress
+                return
+            }
+        }
     }
 
-    It 'fails when the remote tag does not match the local tag' {
-        $script:LocalTagObjectId = 'local-tag-object-id'
-        $script:LocalTagPointsAtHead = $true
-        $script:RemoteTagObjectId = 'remote-tag-object-id'
+    AfterEach {
+        Remove-Item Function:\global:gh -ErrorAction SilentlyContinue
+        foreach ($variableName in 'GhCommands', 'ExistingRelease') {
+            Remove-Item "Variable:\script:$variableName" -ErrorAction SilentlyContinue
+        }
+    }
 
-        { Set-GitReleaseTag -ReleaseTag 'v0.0.1-alpha' -ReleaseNotes 'Body text.' } | Should -Throw '*does not match the local signed tag*'
+    It 'plans to create a draft release when no GitHub release exists yet' {
+        $plan = Get-GitHubDraftReleasePlan -ReleaseTag 'v0.0.1-alpha'
+
+        $plan.Action | Should -Be 'Create'
+        $plan.IsPrerelease | Should -BeTrue
+        $plan.Url | Should -Be $null
+    }
+
+    It 'derives a non-prerelease plan from an exact release tag' {
+        $plan = Get-GitHubDraftReleasePlan -ReleaseTag 'v0.0.1'
+
+        $plan.Action | Should -Be 'Create'
+        $plan.IsPrerelease | Should -BeFalse
+    }
+
+    It 'plans to update an existing draft release' {
+        $script:ExistingRelease = [pscustomobject]@{
+            url = 'https://github.com/krymtkts/pslrm-bump-action/releases/tag/v0.0.1-alpha'
+            isDraft = $true
+            isPrerelease = $true
+            tagName = 'v0.0.1-alpha'
+        }
+
+        $plan = Get-GitHubDraftReleasePlan -ReleaseTag 'v0.0.1-alpha'
+
+        $plan.Action | Should -Be 'Update'
+        $plan.Url | Should -BeExactly 'https://github.com/krymtkts/pslrm-bump-action/releases/tag/v0.0.1-alpha'
+        $plan.PrereleaseStateChanged | Should -BeFalse
+    }
+
+    It 'fails when the GitHub release is already published' {
+        $script:ExistingRelease = [pscustomobject]@{
+            url = 'https://github.com/krymtkts/pslrm-bump-action/releases/tag/v0.0.1-alpha'
+            isDraft = $false
+            isPrerelease = $true
+            tagName = 'v0.0.1-alpha'
+        }
+
+        { Get-GitHubDraftReleasePlan -ReleaseTag 'v0.0.1-alpha' } | Should -Throw '*already published*'
+    }
+}
+
+Describe 'Get-ReleaseDryRunMessages' {
+    It 'returns create-oriented dry-run messages when the release tag and draft release do not exist yet' {
+        $tagPlan = [pscustomobject]@{
+            ReleaseTag = 'v0.0.1-alpha'
+            CreateLocalTag = $true
+            PushRemoteTag = $true
+        }
+        $draftReleasePlan = [pscustomobject]@{
+            ReleaseTag = 'v0.0.1-alpha'
+            Action = 'Create'
+            IsPrerelease = $true
+            PrereleaseStateChanged = $false
+            Url = $null
+        }
+
+        $messages = Get-ReleaseDryRunMessages -ReleaseTag 'v0.0.1-alpha' -TagPlan $tagPlan -DraftReleasePlan $draftReleasePlan
+
+        $messages | Should -Be @(
+            "local release tag 'v0.0.1-alpha': would be created."
+            "remote release tag 'v0.0.1-alpha': would be pushed to origin."
+            "draft GitHub release 'v0.0.1-alpha': would be created."
+        )
+    }
+
+    It 'returns update-oriented dry-run messages when the draft release would be updated' {
+        $tagPlan = [pscustomobject]@{
+            ReleaseTag = 'v0.0.1-alpha'
+            CreateLocalTag = $false
+            PushRemoteTag = $false
+        }
+        $draftReleasePlan = [pscustomobject]@{
+            ReleaseTag = 'v0.0.1-alpha'
+            Action = 'Update'
+            IsPrerelease = $false
+            PrereleaseStateChanged = $true
+            Url = 'https://github.com/krymtkts/pslrm-bump-action/releases/tag/v0.0.1-alpha'
+        }
+
+        $messages = Get-ReleaseDryRunMessages -ReleaseTag 'v0.0.1-alpha' -TagPlan $tagPlan -DraftReleasePlan $draftReleasePlan
+
+        $messages | Should -Be @(
+            "local release tag 'v0.0.1-alpha': already exists."
+            "remote release tag 'v0.0.1-alpha': already exists on origin."
+            "draft GitHub release 'v0.0.1-alpha': would be updated and prerelease would be set to False: https://github.com/krymtkts/pslrm-bump-action/releases/tag/v0.0.1-alpha."
+        )
     }
 }
 
@@ -371,7 +606,9 @@ Describe 'Set-GitHubDraftRelease' {
     }
 
     It 'creates a draft prerelease when no GitHub release exists yet' {
-        $result = Set-GitHubDraftRelease -ReleaseTag 'v0.0.1-alpha' -ReleaseNotesPath $script:releaseNotesPath -IsPrerelease
+        $plan = Get-GitHubDraftReleasePlan -ReleaseTag 'v0.0.1-alpha'
+
+        $result = Set-GitHubDraftRelease -ReleaseTag 'v0.0.1-alpha' -ReleaseNotesPath $script:releaseNotesPath -Plan $plan
 
         $result.isDraft | Should -BeTrue
         $result.isPrerelease | Should -BeTrue
@@ -391,6 +628,17 @@ Describe 'Set-GitHubDraftRelease' {
         )
     }
 
+    It 'applies a precomputed draft release plan without re-reading the initial release state' {
+        $plan = Get-GitHubDraftReleasePlan -ReleaseTag 'v0.0.1-alpha'
+
+        $result = Set-GitHubDraftRelease -ReleaseTag 'v0.0.1-alpha' -ReleaseNotesPath $script:releaseNotesPath -Plan $plan
+
+        $result.isDraft | Should -BeTrue
+        $result.isPrerelease | Should -BeTrue
+        @($script:GhCommands | Where-Object { $_[0] -ceq 'release' -and $_[1] -ceq 'view' }).Count | Should -Be 2
+        @($script:GhCommands | Where-Object { $_[0] -ceq 'release' -and $_[1] -ceq 'create' }).Count | Should -Be 1
+    }
+
     It 'updates an existing draft release' {
         $script:ExistingRelease = [pscustomobject]@{
             url = 'https://github.com/krymtkts/pslrm-bump-action/releases/tag/v0.0.1-alpha'
@@ -399,21 +647,12 @@ Describe 'Set-GitHubDraftRelease' {
             tagName = 'v0.0.1-alpha'
         }
 
-        $result = Set-GitHubDraftRelease -ReleaseTag 'v0.0.1-alpha' -ReleaseNotesPath $script:releaseNotesPath -IsPrerelease
+        $plan = Get-GitHubDraftReleasePlan -ReleaseTag 'v0.0.1-alpha'
+
+        $result = Set-GitHubDraftRelease -ReleaseTag 'v0.0.1-alpha' -ReleaseNotesPath $script:releaseNotesPath -Plan $plan
 
         $result.url | Should -BeExactly 'https://github.com/krymtkts/pslrm-bump-action/releases/tag/v0.0.1-alpha'
         @($script:GhCommands | Where-Object { $_[0] -ceq 'release' -and $_[1] -ceq 'create' }).Count | Should -Be 0
         @($script:GhCommands | Where-Object { $_[0] -ceq 'release' -and $_[1] -ceq 'edit' }).Count | Should -Be 1
-    }
-
-    It 'fails when the GitHub release is already published' {
-        $script:ExistingRelease = [pscustomobject]@{
-            url = 'https://github.com/krymtkts/pslrm-bump-action/releases/tag/v0.0.1-alpha'
-            isDraft = $false
-            isPrerelease = $true
-            tagName = 'v0.0.1-alpha'
-        }
-
-        { Set-GitHubDraftRelease -ReleaseTag 'v0.0.1-alpha' -ReleaseNotesPath $script:releaseNotesPath -IsPrerelease } | Should -Throw "*already published*"
     }
 }

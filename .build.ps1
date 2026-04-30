@@ -16,7 +16,10 @@ param(
 
     [Parameter()]
     [ValidateNotNullOrEmpty()]
-    [string] $ReleaseTag
+    [string] $ReleaseTag,
+
+    [Parameter()]
+    [switch] $DryRun
 )
 
 # Required PowerShell version check.
@@ -40,6 +43,9 @@ if ($MyInvocation.InvocationName -ne '.') {
     if ($PSBoundParameters.ContainsKey('ReleaseTag')) {
         $invokeBuildArguments += '-ReleaseTag'
         $invokeBuildArguments += $ReleaseTag
+    }
+    if ($DryRun) {
+        $invokeBuildArguments += '-DryRun'
     }
 
     try {
@@ -159,7 +165,8 @@ Task ReleaseNotes ValidateReleaseMetadata, {
 }
 
 Task Release ReleaseNotes, {
-    Write-Host 'Creating or updating draft GitHub Release.' -ForegroundColor Yellow
+    $modePrefix = if ($DryRun) { 'Dry run: ' } else { '' }
+    Write-Host "${modePrefix}Create or update draft GitHub Release." -ForegroundColor Yellow
 
     if (-not (Test-Path -LiteralPath $ReleaseNotesPath -PathType Leaf)) {
         throw "Release notes file not found: $ReleaseNotesPath"
@@ -168,7 +175,18 @@ Task Release ReleaseNotes, {
     Assert-CleanGitWorktree
 
     $releaseNotes = Get-Content -LiteralPath $ReleaseNotesPath -Raw
-    $tagResult = Set-GitReleaseTag -ReleaseTag $ReleaseTag -ReleaseNotes $releaseNotes
+    $tagPlan = Get-GitReleaseTagPlan -ReleaseTag $ReleaseTag
+    $draftReleasePlan = Get-GitHubDraftReleasePlan -ReleaseTag $ReleaseTag
+
+    if ($DryRun) {
+        foreach ($message in (Get-ReleaseDryRunMessages -ReleaseTag $ReleaseTag -TagPlan $tagPlan -DraftReleasePlan $draftReleasePlan)) {
+            Write-Host "$modePrefix$message" -ForegroundColor Green
+        }
+
+        return
+    }
+
+    $tagResult = Set-GitReleaseTag -ReleaseTag $ReleaseTag -ReleaseNotes $releaseNotes -Plan $tagPlan
     if ($tagResult.TagCreated) {
         Write-Host "Created local release tag '$ReleaseTag'." -ForegroundColor Green
     }
@@ -179,7 +197,7 @@ Task Release ReleaseNotes, {
         Write-Host "Release tag '$ReleaseTag' already exists on origin." -ForegroundColor Green
     }
 
-    $draftRelease = Set-GitHubDraftRelease -ReleaseTag $ReleaseTag -ReleaseNotesPath $ReleaseNotesPath -IsPrerelease:$ReleaseTag.Contains('-')
+    $draftRelease = Set-GitHubDraftRelease -ReleaseTag $ReleaseTag -ReleaseNotesPath $ReleaseNotesPath -Plan $draftReleasePlan
     Write-Host "Draft GitHub release ready: $($draftRelease.url)" -ForegroundColor Green
 }
 
