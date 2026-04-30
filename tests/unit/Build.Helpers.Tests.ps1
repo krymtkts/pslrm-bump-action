@@ -359,13 +359,23 @@ Describe 'Set-GitReleaseTag' {
             '--cleanup=verbatim',
             'v0.0.1-alpha',
             '--message',
-            'Body text.'
+            "Body text.`n"
         )
         $pushCommand | Should -Be @(
             'push',
             'origin',
             'refs/tags/v0.0.1-alpha'
         )
+    }
+
+    It 'keeps a single trailing line feed in the signed tag message' {
+        $plan = Get-GitReleaseTagPlan -ReleaseTag 'v0.0.1-alpha'
+
+        $null = Set-GitReleaseTag -ReleaseTag 'v0.0.1-alpha' -ReleaseNotes "Body text.`n" -Plan $plan
+
+        $tagCommand = @($script:GitCommands | Where-Object { $_[0] -ceq 'tag' })[0]
+
+        $tagCommand[-1] | Should -Be "Body text.`n"
     }
 
     It 'applies a precomputed release tag plan without re-reading the remote tag state' {

@@ -174,7 +174,9 @@ function Set-GitReleaseTag {
     }
 
     if ($Plan.CreateLocalTag) {
-        $null = runx "Failed to create signed tag '$ReleaseTag'." git tag --sign --cleanup=verbatim $ReleaseTag --message $ReleaseNotes
+        # NOTE: Signed tags must leave the armor block on its own line, so the annotation needs a trailing LF.
+        $tagMessage = if ($ReleaseNotes.EndsWith("`n")) { $ReleaseNotes } else { "$ReleaseNotes`n" }
+        $null = runx "Failed to create signed tag '$ReleaseTag'." git tag --sign --cleanup=verbatim $ReleaseTag --message $tagMessage
         $localTag = Get-LocalGitTagState -TagName $ReleaseTag
         if (-not $localTag.Exists) {
             throw "Signed tag '$ReleaseTag' was created, but could not be reloaded."

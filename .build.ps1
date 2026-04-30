@@ -160,7 +160,7 @@ Task ReleaseNotes ValidateReleaseMetadata, {
         New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
     }
 
-    Set-Content -LiteralPath $ReleaseNotesPath -Value $releaseNotes -NoNewline
+    Set-Content -LiteralPath $ReleaseNotesPath -Value $releaseNotes
     Write-Host "Release notes written to: $ReleaseNotesPath" -ForegroundColor Green
 }
 
