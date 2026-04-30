@@ -40,7 +40,7 @@ function Invoke-BumpPullRequest {
         }
 
         $existingPullRequestViewResult = runx "Failed to inspect bump pull request #$existingPullRequestNumber." gh pr view $existingPullRequestNumber --repo $RepositoryFullName --json 'title,body'
-        $existingPullRequestJson = $existingPullRequestViewResult.Output -join [System.Environment]::NewLine
+        $existingPullRequestJson = $existingPullRequestViewResult.Output -join "`n"
         if ([string]::IsNullOrWhiteSpace($existingPullRequestJson)) {
             throw "Failed to inspect bump pull request #$existingPullRequestNumber."
         }

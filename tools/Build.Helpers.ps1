@@ -187,7 +187,7 @@ function Get-GitHubReleaseInfo {
         throw "Failed to inspect GitHub release '$ReleaseTag'."
     }
 
-    $json = $releaseViewResult.Output -join [System.Environment]::NewLine
+    $json = $releaseViewResult.Output -join "`n"
     if ([string]::IsNullOrWhiteSpace($json)) {
         throw "GitHub release '$ReleaseTag' was found, but no metadata was returned."
     }
