@@ -75,3 +75,20 @@ jobs:
           }
 
           Write-Host "Mutable major tag '${env:MAJOR_TAG}' now points to '${env:RELEASE_TAG}'."
+
+  validate-major-tag:
+    runs-on: ubuntu-latest
+    needs: [extract-version, update-major-tag]
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Assert remote exact/major tag invariant
+        env:
+          MAJOR_TAG: ${{ needs.extract-version.outputs.major_tag }}
+          RELEASE_TAG: ${{ needs.extract-version.outputs.release_tag }}
+        run: |
+          $scriptPath = Join-Path $env:GITHUB_WORKSPACE 'scripts\Assert-RemoteMajorTagInvariant.ps1'
+          & $scriptPath

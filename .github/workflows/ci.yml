@@ -11,13 +11,16 @@ permissions:
 
 jobs:
   unit:
+    name: Unit (${{ matrix.runtime }})
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - runtime: PowerShell 7
+            os: ubuntu-latest
             shell: pwsh
-          - os: windows-latest
+          - runtime: Windows PowerShell 5.1
+            os: windows-latest
             shell: powershell
     runs-on: ${{ matrix.os }}
     steps:
@@ -30,6 +33,7 @@ jobs:
           shell: ${{ matrix.shell }}
 
   smoke:
+    name: Smoke no-change (${{ matrix.os }} / ${{ matrix.edition }})
     strategy:
       fail-fast: false
       matrix:
@@ -47,6 +51,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      # NOTE: Producer-side changed-run validation lives in unit tests so CI can exercise
+      # the supported PowerShell 7 / Windows PowerShell 5.1 script paths without opening
+      # real bump branches or pull requests from this repository.
       - name: Run self-test action
         id: smoke
         uses: ./
