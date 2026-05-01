@@ -117,31 +117,48 @@ function Get-GitReleaseTagPlan {
         [string] $ReleaseTag,
 
         [Parameter()]
+        [switch] $ForceRetag,
+
+        [Parameter()]
         [ValidateNotNullOrEmpty()]
         [string] $RemoteName = 'origin'
     )
 
     $localTag = Get-LocalGitTagState -TagName $ReleaseTag
     $remoteTag = Get-RemoteGitTagState -TagName $ReleaseTag -RemoteName $RemoteName
+    $localTagAtHead = $localTag.Exists -and (Test-LocalGitTagAtHead -TagName $ReleaseTag)
 
-    if ($localTag.Exists) {
-        if (-not (Test-LocalGitTagAtHead -TagName $ReleaseTag)) {
-            throw "Local tag '$ReleaseTag' already exists, but does not point at HEAD."
+    if (-not $ForceRetag) {
+        if ($localTag.Exists) {
+            if (-not $localTagAtHead) {
+                throw "Local tag '$ReleaseTag' already exists, but does not point at HEAD."
+            }
+        }
+        elseif ($remoteTag.Exists) {
+            throw "Remote tag '$ReleaseTag' already exists on '$RemoteName', but the local tag is missing. Fetch it or create a matching local tag before retrying."
+        }
+
+        if ($remoteTag.Exists -and ($remoteTag.ObjectId -cne $localTag.ObjectId)) {
+            throw "Remote tag '$ReleaseTag' on '$RemoteName' does not match the local signed tag."
         }
     }
-    elseif ($remoteTag.Exists) {
-        throw "Remote tag '$ReleaseTag' already exists on '$RemoteName', but the local tag is missing. Fetch it or create a matching local tag before retrying."
-    }
 
-    if ($remoteTag.Exists -and ($remoteTag.ObjectId -cne $localTag.ObjectId)) {
-        throw "Remote tag '$ReleaseTag' on '$RemoteName' does not match the local signed tag."
-    }
+    $createLocalTag = -not $localTag.Exists
+    $retagLocalTag = $ForceRetag -and $localTag.Exists -and -not $localTagAtHead
+    $pushRemoteTag = -not $remoteTag.Exists
+    $forcePushRemoteTag = $ForceRetag -and $remoteTag.Exists -and (
+        $createLocalTag -or
+        $retagLocalTag -or
+        ($remoteTag.ObjectId -cne $localTag.ObjectId)
+    )
 
     [pscustomobject]@{
         ReleaseTag = $ReleaseTag
         RemoteName = $RemoteName
-        CreateLocalTag = -not $localTag.Exists
-        PushRemoteTag = -not $remoteTag.Exists
+        CreateLocalTag = $createLocalTag
+        RetagLocalTag = $retagLocalTag
+        PushRemoteTag = $pushRemoteTag
+        ForcePushRemoteTag = $forcePushRemoteTag
         LocalTagExists = $localTag.Exists
         RemoteTagExists = $remoteTag.Exists
     }
@@ -173,23 +190,46 @@ function Set-GitReleaseTag {
         throw "Release tag plan does not match '$ReleaseTag' on '$RemoteName'."
     }
 
-    if ($Plan.CreateLocalTag) {
+    if ($Plan.CreateLocalTag -and $Plan.RetagLocalTag) {
+        throw "Release tag plan cannot create and retag '$ReleaseTag' at the same time."
+    }
+
+    if ($Plan.PushRemoteTag -and $Plan.ForcePushRemoteTag) {
+        throw "Release tag plan cannot push and force-push '$ReleaseTag' at the same time."
+    }
+
+    if ($Plan.CreateLocalTag -or $Plan.RetagLocalTag) {
         # NOTE: Signed tags must leave the armor block on its own line, so the annotation needs a trailing LF.
         $tagMessage = if ($ReleaseNotes.EndsWith("`n")) { $ReleaseNotes } else { "$ReleaseNotes`n" }
+    }
+
+    if ($Plan.RetagLocalTag) {
+        $null = runx "Failed to delete local tag '$ReleaseTag' before retagging." git tag --delete $ReleaseTag
+    }
+
+    if ($Plan.CreateLocalTag -or $Plan.RetagLocalTag) {
         $null = runx "Failed to create signed tag '$ReleaseTag'." git tag --sign --cleanup=verbatim $ReleaseTag --message $tagMessage
         $localTag = Get-LocalGitTagState -TagName $ReleaseTag
         if (-not $localTag.Exists) {
             throw "Signed tag '$ReleaseTag' was created, but could not be reloaded."
         }
-    }
 
-    if ($Plan.PushRemoteTag) {
+        if (-not (Test-LocalGitTagAtHead -TagName $ReleaseTag)) {
+            throw "Signed tag '$ReleaseTag' was created, but does not point at HEAD."
+        }
+    }
+    if ($Plan.ForcePushRemoteTag) {
+        $null = runx "Failed to force-push release tag '$ReleaseTag' to remote '$RemoteName'." git push --force $RemoteName "refs/tags/$ReleaseTag"
+    }
+    elseif ($Plan.PushRemoteTag) {
         $null = runx "Failed to push release tag '$ReleaseTag' to remote '$RemoteName'." git push $RemoteName "refs/tags/$ReleaseTag"
     }
 
     [pscustomobject]@{
         TagCreated = $Plan.CreateLocalTag
+        TagRetagged = $Plan.RetagLocalTag
         TagPushed = $Plan.PushRemoteTag
+        TagForcePushed = $Plan.ForcePushRemoteTag
     }
 }
 
@@ -285,8 +325,8 @@ function Get-ReleaseDryRunMessages {
         throw "Dry-run plan does not match '$ReleaseTag'."
     }
 
-    $localTagState = if ($TagPlan.CreateLocalTag) { 'would be created' } else { 'already exists' }
-    $remoteTagState = if ($TagPlan.PushRemoteTag) { 'would be pushed to origin' } else { 'already exists on origin' }
+    $localTagState = if ($TagPlan.RetagLocalTag) { 'would be retagged at HEAD' } elseif ($TagPlan.CreateLocalTag) { 'would be created' } else { 'already exists' }
+    $remoteTagState = if ($TagPlan.ForcePushRemoteTag) { 'would be force-pushed to origin' } elseif ($TagPlan.PushRemoteTag) { 'would be pushed to origin' } else { 'already exists on origin' }
     $draftReleaseState = if ($DraftReleasePlan.Action -ceq 'Create') { 'would be created' } else { 'would be updated' }
     $draftReleaseDetail = if ($DraftReleasePlan.Action -ceq 'Create') { '' } else {
         $prereleaseText = if ($DraftReleasePlan.PrereleaseStateChanged) { " and prerelease would be set to $($DraftReleasePlan.IsPrerelease)" } else { '' }

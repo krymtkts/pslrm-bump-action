@@ -19,7 +19,10 @@ param(
     [string] $ReleaseTag,
 
     [Parameter()]
-    [switch] $DryRun
+    [switch] $DryRun,
+
+    [Parameter()]
+    [switch] $ForceRetag
 )
 
 # Required PowerShell version check.
@@ -46,6 +49,9 @@ if ($MyInvocation.InvocationName -ne '.') {
     }
     if ($DryRun) {
         $invokeBuildArguments += '-DryRun'
+    }
+    if ($ForceRetag) {
+        $invokeBuildArguments += '-ForceRetag'
     }
 
     try {
@@ -175,8 +181,8 @@ Task Release ReleaseNotes, {
     Assert-CleanGitWorktree
 
     $releaseNotes = Get-Content -LiteralPath $ReleaseNotesPath -Raw
-    $tagPlan = Get-GitReleaseTagPlan -ReleaseTag $ReleaseTag
     $draftReleasePlan = Get-GitHubDraftReleasePlan -ReleaseTag $ReleaseTag
+    $tagPlan = Get-GitReleaseTagPlan -ReleaseTag $ReleaseTag -ForceRetag:$ForceRetag
 
     if ($DryRun) {
         foreach ($message in (Get-ReleaseDryRunMessages -ReleaseTag $ReleaseTag -TagPlan $tagPlan -DraftReleasePlan $draftReleasePlan)) {
@@ -190,10 +196,16 @@ Task Release ReleaseNotes, {
     if ($tagResult.TagCreated) {
         Write-Host "Created local release tag '$ReleaseTag'." -ForegroundColor Green
     }
+    elseif ($tagResult.TagRetagged) {
+        Write-Host "Retagged local release tag '$ReleaseTag' at HEAD." -ForegroundColor Green
+    }
+    if ($tagResult.TagForcePushed) {
+        Write-Host "Force-pushed release tag '$ReleaseTag' to origin." -ForegroundColor Green
+    }
     if ($tagResult.TagPushed) {
         Write-Host "Pushed release tag '$ReleaseTag' to origin." -ForegroundColor Green
     }
-    else {
+    elseif (-not $tagResult.TagForcePushed) {
         Write-Host "Release tag '$ReleaseTag' already exists on origin." -ForegroundColor Green
     }
 

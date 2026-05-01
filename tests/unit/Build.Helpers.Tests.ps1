@@ -236,7 +236,9 @@ Describe 'Get-GitReleaseTagPlan' {
         $plan = Get-GitReleaseTagPlan -ReleaseTag 'v0.0.1-alpha'
 
         $plan.CreateLocalTag | Should -BeTrue
+        $plan.RetagLocalTag | Should -BeFalse
         $plan.PushRemoteTag | Should -BeTrue
+        $plan.ForcePushRemoteTag | Should -BeFalse
         $plan.LocalTagExists | Should -BeFalse
         $plan.RemoteTagExists | Should -BeFalse
     }
@@ -248,7 +250,9 @@ Describe 'Get-GitReleaseTagPlan' {
         $plan = Get-GitReleaseTagPlan -ReleaseTag 'v0.0.1-alpha'
 
         $plan.CreateLocalTag | Should -BeFalse
+        $plan.RetagLocalTag | Should -BeFalse
         $plan.PushRemoteTag | Should -BeTrue
+        $plan.ForcePushRemoteTag | Should -BeFalse
     }
 
     It 'plans no tag changes when matching local and remote tags already exist' {
@@ -259,7 +263,56 @@ Describe 'Get-GitReleaseTagPlan' {
         $plan = Get-GitReleaseTagPlan -ReleaseTag 'v0.0.1-alpha'
 
         $plan.CreateLocalTag | Should -BeFalse
+        $plan.RetagLocalTag | Should -BeFalse
         $plan.PushRemoteTag | Should -BeFalse
+        $plan.ForcePushRemoteTag | Should -BeFalse
+    }
+
+    It 'plans to retag and force-push when force retag is set and the local tag does not point at HEAD' {
+        $script:LocalTagObjectId = 'old-tag-object-id'
+        $script:RemoteTagObjectId = 'old-tag-object-id'
+
+        $plan = Get-GitReleaseTagPlan -ReleaseTag 'v0.0.1-alpha' -ForceRetag
+
+        $plan.CreateLocalTag | Should -BeFalse
+        $plan.RetagLocalTag | Should -BeTrue
+        $plan.PushRemoteTag | Should -BeFalse
+        $plan.ForcePushRemoteTag | Should -BeTrue
+    }
+
+    It 'plans to create a fresh local tag and force-push when force retag is set and only the remote tag exists' {
+        $script:RemoteTagObjectId = 'remote-tag-object-id'
+
+        $plan = Get-GitReleaseTagPlan -ReleaseTag 'v0.0.1-alpha' -ForceRetag
+
+        $plan.CreateLocalTag | Should -BeTrue
+        $plan.RetagLocalTag | Should -BeFalse
+        $plan.PushRemoteTag | Should -BeFalse
+        $plan.ForcePushRemoteTag | Should -BeTrue
+    }
+
+    It 'plans to retag and push when force retag is set and the remote tag does not exist' {
+        $script:LocalTagObjectId = 'old-tag-object-id'
+
+        $plan = Get-GitReleaseTagPlan -ReleaseTag 'v0.0.1-alpha' -ForceRetag
+
+        $plan.CreateLocalTag | Should -BeFalse
+        $plan.RetagLocalTag | Should -BeTrue
+        $plan.PushRemoteTag | Should -BeTrue
+        $plan.ForcePushRemoteTag | Should -BeFalse
+    }
+
+    It 'plans to keep the local tag and force-push only the remote tag when force retag is set and the remote tag differs' {
+        $script:LocalTagObjectId = 'local-tag-object-id'
+        $script:LocalTagPointsAtHead = $true
+        $script:RemoteTagObjectId = 'remote-tag-object-id'
+
+        $plan = Get-GitReleaseTagPlan -ReleaseTag 'v0.0.1-alpha' -ForceRetag
+
+        $plan.CreateLocalTag | Should -BeFalse
+        $plan.RetagLocalTag | Should -BeFalse
+        $plan.PushRemoteTag | Should -BeFalse
+        $plan.ForcePushRemoteTag | Should -BeTrue
     }
 
     It 'fails when the local tag does not point at HEAD' {
@@ -313,6 +366,12 @@ Describe 'Set-GitReleaseTag' {
                             $recordedArguments[-1]
                         }
 
+                        return
+                    }
+
+                    if ($recordedArguments[1] -ceq '--delete') {
+                        $script:LocalTagObjectId = $null
+                        $script:LocalTagPointsAtHead = $false
                         return
                     }
 
@@ -376,6 +435,25 @@ Describe 'Set-GitReleaseTag' {
         $tagCommand = @($script:GitCommands | Where-Object { $_[0] -ceq 'tag' })[0]
 
         $tagCommand[-1] | Should -Be "Body text.`n"
+    }
+
+    It 'retags the local exact tag and force-pushes it when the plan requests force retagging' {
+        $script:LocalTagObjectId = 'old-tag-object-id'
+        $script:RemoteTagObjectId = 'old-tag-object-id'
+
+        $plan = Get-GitReleaseTagPlan -ReleaseTag 'v0.0.1-alpha' -ForceRetag
+
+        $result = Set-GitReleaseTag -ReleaseTag 'v0.0.1-alpha' -ReleaseNotes 'Body text.' -Plan $plan
+
+        $result.TagCreated | Should -BeFalse
+        $result.TagRetagged | Should -BeTrue
+        $result.TagPushed | Should -BeFalse
+        $result.TagForcePushed | Should -BeTrue
+
+        $script:RemoteTagObjectId | Should -BeExactly 'tag-object-id'
+        @($script:GitCommands | Where-Object { $_[0] -ceq 'tag' -and $_[1] -ceq '--delete' }).Count | Should -Be 1
+        @($script:GitCommands | Where-Object { $_[0] -ceq 'tag' -and $_[1] -ceq '--sign' }).Count | Should -Be 1
+        @($script:GitCommands | Where-Object { $_[0] -ceq 'push' -and $_[1] -ceq '--force' }).Count | Should -Be 1
     }
 
     It 'applies a precomputed release tag plan without re-reading the remote tag state' {
@@ -507,7 +585,9 @@ Describe 'Get-ReleaseDryRunMessages' {
         $tagPlan = [pscustomobject]@{
             ReleaseTag = 'v0.0.1-alpha'
             CreateLocalTag = $true
+            RetagLocalTag = $false
             PushRemoteTag = $true
+            ForcePushRemoteTag = $false
         }
         $draftReleasePlan = [pscustomobject]@{
             ReleaseTag = 'v0.0.1-alpha'
@@ -530,7 +610,9 @@ Describe 'Get-ReleaseDryRunMessages' {
         $tagPlan = [pscustomobject]@{
             ReleaseTag = 'v0.0.1-alpha'
             CreateLocalTag = $false
+            RetagLocalTag = $false
             PushRemoteTag = $false
+            ForcePushRemoteTag = $false
         }
         $draftReleasePlan = [pscustomobject]@{
             ReleaseTag = 'v0.0.1-alpha'
@@ -546,6 +628,31 @@ Describe 'Get-ReleaseDryRunMessages' {
             "local release tag 'v0.0.1-alpha': already exists."
             "remote release tag 'v0.0.1-alpha': already exists on origin."
             "draft GitHub release 'v0.0.1-alpha': would be updated and prerelease would be set to False: https://github.com/krymtkts/pslrm-bump-action/releases/tag/v0.0.1-alpha."
+        )
+    }
+
+    It 'returns retag-oriented dry-run messages when force retag would replace the exact tag' {
+        $tagPlan = [pscustomobject]@{
+            ReleaseTag = 'v0.0.1-alpha'
+            CreateLocalTag = $false
+            RetagLocalTag = $true
+            PushRemoteTag = $false
+            ForcePushRemoteTag = $true
+        }
+        $draftReleasePlan = [pscustomobject]@{
+            ReleaseTag = 'v0.0.1-alpha'
+            Action = 'Update'
+            IsPrerelease = $true
+            PrereleaseStateChanged = $false
+            Url = 'https://github.com/krymtkts/pslrm-bump-action/releases/tag/v0.0.1-alpha'
+        }
+
+        $messages = Get-ReleaseDryRunMessages -ReleaseTag 'v0.0.1-alpha' -TagPlan $tagPlan -DraftReleasePlan $draftReleasePlan
+
+        $messages | Should -Be @(
+            "local release tag 'v0.0.1-alpha': would be retagged at HEAD."
+            "remote release tag 'v0.0.1-alpha': would be force-pushed to origin."
+            "draft GitHub release 'v0.0.1-alpha': would be updated: https://github.com/krymtkts/pslrm-bump-action/releases/tag/v0.0.1-alpha."
         )
     }
 }
