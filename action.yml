@@ -1,5 +1,8 @@
-name: pslrm-bump-action
+name: pslrm Bump Action
 description: Update a pslrm lockfile and open or update a pull request.
+branding:
+  icon: "git-pull-request"
+  color: "purple"
 
 inputs:
   project-path:
