@@ -155,3 +155,48 @@ Describe 'run wrappers with gh' {
         { runx 'GitHub CLI command failed.' gh pr list --state open } | Should -Throw "*GitHub CLI command failed.*HTTP 403: forbidden*"
     }
 }
+
+Describe 'run wrappers with real git' {
+    BeforeEach {
+        Remove-Item Function:\global:git -ErrorAction SilentlyContinue
+    }
+
+    AfterEach {
+        Remove-Item Function:\global:git -ErrorAction SilentlyContinue
+    }
+
+    It 'keeps successful git switch stderr non-fatal under Stop with real git' {
+        $repoPath = Join-Path $TestDrive 'repo'
+        New-Item -ItemType Directory -Path $repoPath -Force | Out-Null
+        $gitPath = [string] (
+            Get-Command git -All |
+                Where-Object CommandType -EQ 'Application' |
+                Select-Object -First 1 -ExpandProperty Source
+        )
+        if ([string]::IsNullOrWhiteSpace($gitPath)) {
+            throw 'git application not found.'
+        }
+
+        & $gitPath -C $repoPath init --initial-branch=main | Out-Null
+        & $gitPath -C $repoPath config user.name 'Test User'
+        & $gitPath -C $repoPath config user.email 'test@example.com'
+        & $gitPath -C $repoPath config core.autocrlf false
+        Set-Content -LiteralPath (Join-Path $repoPath 'README.txt') -Value 'hello' -NoNewline
+        & $gitPath -C $repoPath add README.txt
+        & $gitPath -C $repoPath commit -m 'init' | Out-Null
+
+        $originalErrorActionPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = 'Stop'
+
+            $result = runx 'Git command failed.' $gitPath -C $repoPath switch --force-create pslrm-bump/test
+
+            $result.ExitCode | Should -Be 0
+            @($result.Output) | Should -Contain "Switched to a new branch 'pslrm-bump/test'"
+            $ErrorActionPreference | Should -Be 'Stop'
+        }
+        finally {
+            $ErrorActionPreference = $originalErrorActionPreference
+        }
+    }
+}
