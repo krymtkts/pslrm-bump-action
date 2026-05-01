@@ -106,8 +106,31 @@ function run {
     $commandName = [string] $Invocation[0]
     $arguments = if ($Invocation.Count -eq 1) { @() } else { $Invocation[1..($Invocation.Count - 1)] }
 
-    $output = @(& $commandName @arguments 2>&1)
-    $exitCode = $LASTEXITCODE
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        # NOTE: Windows PowerShell 5.1 turns successful native stderr output (for example,
+        # `git switch --force-create` printing "Switched to a new branch ...") into a
+        # NativeCommandError when the caller runs with $ErrorActionPreference = 'Stop'.
+        # Capture output under Continue, then decide success from $LASTEXITCODE so benign
+        # stderr does not fail the action.
+        $ErrorActionPreference = 'Continue'
+        $rawOutput = @(& $commandName @arguments 2>&1)
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+
+    $output = @(
+        foreach ($line in $rawOutput) {
+            if ($line -is [System.Management.Automation.ErrorRecord]) {
+                $line.ToString()
+            }
+            else {
+                $line
+            }
+        }
+    )
 
     [pscustomobject]@{
         ExitCode = $exitCode

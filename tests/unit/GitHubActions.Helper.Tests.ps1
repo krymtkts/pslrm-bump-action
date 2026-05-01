@@ -6,6 +6,7 @@ BeforeAll {
 Describe 'run wrappers with git' {
     BeforeEach {
         $script:GitCommandOutput = @()
+        $script:GitCommandErrorOutput = @()
         $script:GitExitCode = 0
         $script:GitCommands = [System.Collections.Generic.List[string[]]]::new()
 
@@ -23,6 +24,10 @@ Describe 'run wrappers with git' {
             $script:GitCommands.Add($recordedArguments)
             $global:LASTEXITCODE = $script:GitExitCode
 
+            foreach ($line in $script:GitCommandErrorOutput) {
+                Write-Error -Message $line
+            }
+
             foreach ($line in $script:GitCommandOutput) {
                 $line
             }
@@ -31,7 +36,7 @@ Describe 'run wrappers with git' {
 
     AfterEach {
         Remove-Item Function:\global:git -ErrorAction SilentlyContinue
-        foreach ($variableName in 'GitCommandOutput', 'GitExitCode', 'GitCommands') {
+        foreach ($variableName in 'GitCommandOutput', 'GitCommandErrorOutput', 'GitExitCode', 'GitCommands') {
             Remove-Item "Variable:\script:$variableName" -ErrorAction SilentlyContinue
         }
     }
@@ -53,6 +58,16 @@ Describe 'run wrappers with git' {
         $script:GitCommands[0] | Should -Be @('-C', 'C:\repo', 'status', '--short')
     }
 
+    It 'preserves null output entries from commands' {
+        $script:GitCommandOutput = @($null, 'line 2')
+
+        $result = run git status --short
+
+        $result.Output.Count | Should -Be 2
+        $result.Output[0] | Should -Be $null
+        $result.Output[1] | Should -Be 'line 2'
+    }
+
     It 'throws with command output details from runx' {
         $script:GitCommandOutput = @('fatal: bad things happened')
         $script:GitExitCode = 1
@@ -66,6 +81,26 @@ Describe 'run wrappers with git' {
 
         { runx 'Git command failed.' git -C 'C:\repo' status --short } | Should -Throw "*Git command failed.*bad things happened*"
         $script:GitCommands[0] | Should -Be @('-C', 'C:\repo', 'status', '--short')
+    }
+
+    It 'keeps successful error-stream output non-fatal under Stop' {
+        $script:GitCommandErrorOutput = @("Switched to a new branch 'pslrm-bump/test'")
+        $script:GitExitCode = 0
+
+        $originalErrorActionPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = 'Stop'
+
+            $result = runx 'Git command failed.' git switch --force-create pslrm-bump/test
+
+            $result.ExitCode | Should -Be 0
+            $result.Output | Should -Be @("Switched to a new branch 'pslrm-bump/test'")
+            $ErrorActionPreference | Should -Be 'Stop'
+            $script:GitCommands[0] | Should -Be @('switch', '--force-create', 'pslrm-bump/test')
+        }
+        finally {
+            $ErrorActionPreference = $originalErrorActionPreference
+        }
     }
 }
 
