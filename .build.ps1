@@ -68,11 +68,9 @@ if ($MyInvocation.InvocationName -ne '.') {
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-. (Join-Path $PSScriptRoot 'tools\ReleaseNotes.Helpers.ps1')
-
 $ActionMetadataPath = Join-Path $PSScriptRoot 'action.yml'
 $ReadmePath = Join-Path $PSScriptRoot 'README.md'
-$ChangelogPath = Get-ChangelogPath
+$ChangelogPath = Join-Path $PSScriptRoot 'CHANGELOG.md'
 $ScriptsPath = Join-Path $PSScriptRoot 'scripts'
 $TestsPath = Join-Path $PSScriptRoot 'tests'
 $ToolsPath = Join-Path $PSScriptRoot 'tools'
