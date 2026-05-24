@@ -96,6 +96,8 @@ Task Init {
     Assert-CommandAvailable -Name 'Invoke-Build'
     Assert-CommandAvailable -Name 'Invoke-ScriptAnalyzer'
     Assert-CommandAvailable -Name 'Invoke-Pester'
+    Assert-CommandAvailable -Name 'Get-KeepAChangelogEntry'
+    Assert-CommandAvailable -Name 'Assert-KeepAChangelogReleaseMetadata'
 
     foreach ($path in @($ActionMetadataPath, $ReadmePath, $ChangelogPath, $ScriptsPath, $TestsPath)) {
         if (-not (Test-Path -LiteralPath $path)) {
@@ -152,8 +154,8 @@ Task ValidateReleaseMetadata Init, {
     if ([string]::IsNullOrWhiteSpace($ReleaseTag)) {
         throw '-ReleaseTag is required.'
     }
-    $version = ConvertFrom-ReleaseTagToVersion -ReleaseTag $ReleaseTag
-    Assert-ReleaseInfo -Version $version -ReleaseTag $ReleaseTag
+    $version = $ReleaseTag -replace '^refs/tags/', '' -replace '^v', ''
+    Assert-KeepAChangelogReleaseMetadata -Version $version -ReleaseTag $ReleaseTag
 }
 
 Task ReleaseNotes ValidateReleaseMetadata, {
