@@ -161,8 +161,7 @@ Task ValidateReleaseMetadata Init, {
 Task ReleaseNotes ValidateReleaseMetadata, {
     Write-Host 'Generating GitHub Release notes from CHANGELOG.md.' -ForegroundColor Yellow
 
-    $version = ConvertFrom-ReleaseTagToVersion -ReleaseTag $ReleaseTag
-    $releaseNotes = Get-ChangelogEntry -Version $version
+    $releaseNotes = Get-KeepAChangelogEntry -ReleaseTag $ReleaseTag
     $outputDirectory = Split-Path -Parent $ReleaseNotesPath
     if (-not [string]::IsNullOrWhiteSpace($outputDirectory)) {
         New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
