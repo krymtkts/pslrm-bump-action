@@ -68,11 +68,9 @@ if ($MyInvocation.InvocationName -ne '.') {
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-. (Join-Path $PSScriptRoot 'tools\ReleaseNotes.Helpers.ps1')
-
 $ActionMetadataPath = Join-Path $PSScriptRoot 'action.yml'
 $ReadmePath = Join-Path $PSScriptRoot 'README.md'
-$ChangelogPath = Get-ChangelogPath
+$ChangelogPath = Join-Path $PSScriptRoot 'CHANGELOG.md'
 $ScriptsPath = Join-Path $PSScriptRoot 'scripts'
 $TestsPath = Join-Path $PSScriptRoot 'tests'
 $ToolsPath = Join-Path $PSScriptRoot 'tools'
@@ -96,6 +94,8 @@ Task Init {
     Assert-CommandAvailable -Name 'Invoke-Build'
     Assert-CommandAvailable -Name 'Invoke-ScriptAnalyzer'
     Assert-CommandAvailable -Name 'Invoke-Pester'
+    Assert-CommandAvailable -Name 'Get-KeepAChangelogEntry'
+    Assert-CommandAvailable -Name 'Assert-KeepAChangelogReleaseMetadata'
 
     foreach ($path in @($ActionMetadataPath, $ReadmePath, $ChangelogPath, $ScriptsPath, $TestsPath)) {
         if (-not (Test-Path -LiteralPath $path)) {
@@ -152,15 +152,14 @@ Task ValidateReleaseMetadata Init, {
     if ([string]::IsNullOrWhiteSpace($ReleaseTag)) {
         throw '-ReleaseTag is required.'
     }
-    $version = ConvertFrom-ReleaseTagToVersion -ReleaseTag $ReleaseTag
-    Assert-ReleaseInfo -Version $version -ReleaseTag $ReleaseTag
+    $version = $ReleaseTag -replace '^refs/tags/', '' -replace '^v', ''
+    Assert-KeepAChangelogReleaseMetadata -Version $version -ReleaseTag $ReleaseTag
 }
 
 Task ReleaseNotes ValidateReleaseMetadata, {
     Write-Host 'Generating GitHub Release notes from CHANGELOG.md.' -ForegroundColor Yellow
 
-    $version = ConvertFrom-ReleaseTagToVersion -ReleaseTag $ReleaseTag
-    $releaseNotes = Get-ChangelogEntry -Version $version
+    $releaseNotes = Get-KeepAChangelogEntry -ReleaseTag $ReleaseTag
     $outputDirectory = Split-Path -Parent $ReleaseNotesPath
     if (-not [string]::IsNullOrWhiteSpace($outputDirectory)) {
         New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null

@@ -37,7 +37,9 @@ Import-Module $psResourceGetModule.Path -ErrorAction Stop -Force
 # NOTE: Normalize PSGallery before Install-PSResource; act smoke can start with a missing repository store.
 Get-PSResourceRepository -Name PSGallery | Out-Null
 Set-PSResourceRepository -Name PSGallery -Trusted -ApiVersion V2
-Install-PSResource -Name pslrm -Version $pslrmVersion -Prerelease -Scope CurrentUser -Repository PSGallery -TrustRepository
+# NOTE: pslrm declares PSResourceGet as a dependency, and the dependency install would otherwise try to replace the same loaded module under CurrentUser.
+# NOTE: SkipDependencyCheck avoids that self-reinstall conflict.
+Install-PSResource -Name pslrm -Version $pslrmVersion -Prerelease -Scope CurrentUser -Repository PSGallery -TrustRepository -SkipDependencyCheck
 
 if ($pslrmVersion -notmatch '^(?<Version>\d+\.\d+\.\d+)(?:-(?<Prerelease>.+))?$') {
     throw "Unsupported bundled pslrm version format: $pslrmVersion"
