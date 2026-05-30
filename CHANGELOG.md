@@ -7,6 +7,10 @@ This project starts in the `v0` preview series.
 
 ## [Unreleased]
 
+### Changed
+
+- Bump `pslrm` version to 0.0.1.
+
 ## [0.0.1-alpha] - 2026-05-01
 
 ### Added
