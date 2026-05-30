@@ -45,7 +45,7 @@ if ($pslrmVersion -notmatch '^(?<Version>\d+\.\d+\.\d+)(?:-(?<Prerelease>.+))?$'
     throw "Unsupported bundled pslrm version format: $pslrmVersion"
 }
 
-$expectedPrerelease = if ($null -eq $Matches.Prerelease) { '' } else { [string] $Matches.Prerelease }
+$expectedPrerelease = if (-not $Matches.ContainsKey('Prerelease') -or ($null -eq $Matches.Prerelease)) { '' } else { [string] $Matches.Prerelease }
 
 $installedPslrmModules = @(
     Get-InstalledPSResource -Name pslrm |
