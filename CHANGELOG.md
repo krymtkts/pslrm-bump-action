@@ -7,6 +7,8 @@ This project starts in the `v0` preview series.
 
 ## [Unreleased]
 
+## [0.0.1] - 2026-05-30
+
 ### Changed
 
 - Bump `pslrm` version to 0.0.1.
@@ -31,4 +33,5 @@ This project starts in the `v0` preview series.
 ---
 
 [Unreleased]: https://github.com/krymtkts/pslrm-bump-action/commits/main
+[0.0.1]: https://github.com/krymtkts/pslrm-bump-action/compare/v0.0.1-alpha...v0.0.1
 [0.0.1-alpha]: https://github.com/krymtkts/pslrm-bump-action/releases/tag/v0.0.1-alpha
