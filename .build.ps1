@@ -91,11 +91,13 @@ $CoveragePaths = @(
 Task Init {
     Write-Host "Parameters: $($PSBoundParameters | ConvertTo-Json -Compress)" -ForegroundColor Green
 
-    Assert-CommandAvailable -Name 'Invoke-Build'
-    Assert-CommandAvailable -Name 'Invoke-ScriptAnalyzer'
-    Assert-CommandAvailable -Name 'Invoke-Pester'
-    Assert-CommandAvailable -Name 'Get-KeepAChangelogEntry'
-    Assert-CommandAvailable -Name 'Assert-KeepAChangelogReleaseMetadata'
+    @(
+        'Invoke-Build'
+        'Invoke-ScriptAnalyzer'
+        'Invoke-Pester'
+        'Get-KeepAChangelogEntry'
+        'Assert-KeepAChangelogReleaseMetadata'
+    ) | Assert-CommandAvailable
 
     foreach ($path in @($ActionMetadataPath, $ReadmePath, $ChangelogPath, $ScriptsPath, $TestsPath)) {
         if (-not (Test-Path -LiteralPath $path)) {
