@@ -111,12 +111,12 @@ jobs:
 
 > [!IMPORTANT]
 > For most repositories, prefer `GITHUB_TOKEN`.
-> Pull requests created by `github-actions[bot]` can run follow-up workflows after approval by a user with write access.
+> Pull requests created by `github-actions[bot]` can run subsequent workflows after approval by a user with write access.
 > See GitHub's announcement:
 >
 > - [Bot-created pull requests can run workflows if approved - GitHub Changelog](https://github.blog/changelog/2026-06-11-bot-created-pull-requests-can-run-workflows-if-approved/)
 >
-> Use a PAT when follow-up workflows must run automatically without human approval.
+> Use a PAT when subsequent workflows must run automatically without human approval.
 > See [Token Guidance](#token-guidance) for details.
 
 Example for a project in a subdirectory:
@@ -168,12 +168,12 @@ jobs:
 
 ## Inputs
 
-| Input                        | Required | Default | Description                                                                                                                                                                                 |
-| ---------------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `project-path`               | No       | `.`     | Path to the target project root or a path below it. The action resolves the directory that contains `psreq.psd1`.                                                                           |
-| `target-powershell-edition`  | No       | `core`  | PowerShell edition used to run action steps. Use `core` for `pwsh` or `desktop` for Windows PowerShell on Windows runners.                                                                  |
-| `skip-psresourceget-install` | No       | `false` | Skip installing `Microsoft.PowerShell.PSResourceGet`. Useful if the runner already has it installed or is in an offline environment.                                                        |
-| `github-token`               | Yes      | none    | Token used for branch push and pull request operations. Prefer `GITHUB_TOKEN` for most repositories. Use a PAT only when follow-up workflows must run automatically without human approval. |
+| Input                        | Required | Default | Description                                                                                                                                                                                  |
+| ---------------------------- | -------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `project-path`               | No       | `.`     | Path to the target project root or a path below it. The action resolves the directory that contains `psreq.psd1`.                                                                            |
+| `target-powershell-edition`  | No       | `core`  | PowerShell edition used to run action steps. Use `core` for `pwsh` or `desktop` for Windows PowerShell on Windows runners.                                                                   |
+| `skip-psresourceget-install` | No       | `false` | Skip installing `Microsoft.PowerShell.PSResourceGet`. Useful if the runner already has it installed or is in an offline environment.                                                         |
+| `github-token`               | Yes      | none    | Token used for branch push and pull request operations. Prefer `GITHUB_TOKEN` for most repositories. Use a PAT only when subsequent workflows must run automatically without human approval. |
 
 ## Outputs
 
@@ -189,12 +189,12 @@ Pass a token that can push branches and create or update pull requests.
 
 > [!IMPORTANT]
 > For most repositories, use `GITHUB_TOKEN`.
-> Pull requests created by `github-actions[bot]` can run follow-up workflows after approval by a user with write access to the repository.
+> Pull requests created by `github-actions[bot]` can run subsequent workflows after approval by a user with write access to the repository.
 > See GitHub's announcement:
 >
 > - [Bot-created pull requests can run workflows if approved - GitHub Changelog](https://github.blog/changelog/2026-06-11-bot-created-pull-requests-can-run-workflows-if-approved/)
 >
-> Use a PAT when follow-up workflows must run automatically without human approval.
+> Use a PAT when subsequent workflows must run automatically without human approval.
 
 ### Using `GITHUB_TOKEN` (recommended)
 
@@ -212,7 +212,7 @@ With this configuration, the action can:
 
 - Push bump branches.
 - Create or update pull requests.
-- Trigger follow-up workflows after approval by a user with write access.
+- Trigger workflows after approval by a user with write access.
 
 You can verify that setting with GitHub CLI:
 
@@ -231,7 +231,7 @@ gh api --method PUT repos/OWNER/REPO/actions/permissions/workflow `
 
 ### Using a PAT
 
-Use a PAT when follow-up workflows must run automatically without human approval.
+Use a PAT when workflows must run automatically without human approval.
 Grant the PAT `contents: write` and `pull-requests: write` on the target repository.
 Store the PAT in a secret and pass that secret to `github-token`.
 

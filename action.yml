@@ -18,7 +18,7 @@ inputs:
     required: false
     default: "false"
   github-token:
-    description: Token for git and GitHub operations such as branch push and pull request creation. Use a PAT when follow-up workflows must run automatically without human approval.
+    description: Token for git and GitHub operations such as branch push and pull request creation. Use a PAT when subsequent workflows must run automatically without human approval.
     required: true
 
 outputs:
