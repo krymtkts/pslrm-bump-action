@@ -7,6 +7,10 @@ This project starts in the `v0` preview series.
 
 ## [Unreleased]
 
+### Added
+
+- Add `skip-psresourceget-install` input to skip PSResourceGet installation.
+
 ### Changed
 
 - Avoid unconditional `Microsoft.PowerShell.PSResourceGet` install. Check if version `1.0.1`+ exists.

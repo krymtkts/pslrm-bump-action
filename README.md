@@ -49,7 +49,7 @@ The project root is the directory that contains `psreq.psd1`.
 
 On each run, the action:
 
-1. Installs `Microsoft.PowerShell.PSResourceGet` (unless `>= 1.0.1` exists). Then installs pinned `pslrm` from PSGallery.
+1. Installs `Microsoft.PowerShell.PSResourceGet` (unless `>= 1.0.1` exists or skipped). Then installs pinned `pslrm` from PSGallery.
    - [PowerShell 7.4.0](https://github.com/PowerShell/PowerShell/releases/tag/v7.4.0)(LTS) bundles version `1.0.1`.
 2. Resolves the target project root from `project-path`.
 3. Runs `Update-PSLResource` for that project to create or update `psreq.lock.psd1`.
@@ -160,11 +160,12 @@ jobs:
 
 ## Inputs
 
-| Input                       | Required | Default | Description                                                                                                                |
-| --------------------------- | -------- | ------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `project-path`              | No       | `.`     | Path to the target project root or a path below it. The action resolves the directory that contains `psreq.psd1`.          |
-| `target-powershell-edition` | No       | `core`  | PowerShell edition used to run action steps. Use `core` for `pwsh` or `desktop` for Windows PowerShell on Windows runners. |
-| `github-token`              | Yes      | none    | Token used for branch push and pull request operations. Use a PAT when you want follow-up GitHub Actions workflows to run. |
+| Input                        | Required | Default | Description                                                                                                                          |
+| ---------------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `project-path`               | No       | `.`     | Path to the target project root or a path below it. The action resolves the directory that contains `psreq.psd1`.                    |
+| `target-powershell-edition`  | No       | `core`  | PowerShell edition used to run action steps. Use `core` for `pwsh` or `desktop` for Windows PowerShell on Windows runners.           |
+| `skip-psresourceget-install` | No       | `false` | Skip installing `Microsoft.PowerShell.PSResourceGet`. Useful if the runner already has it installed or is in an offline environment. |
+| `github-token`               | Yes      | none    | Token used for branch push and pull request operations. Use a PAT when you want follow-up GitHub Actions workflows to run.           |
 
 ## Outputs
 

@@ -6,7 +6,10 @@ param(
 
     [Parameter(Mandatory)]
     [ValidateNotNullOrEmpty()]
-    [string] $PslrmVersionPath
+    [string] $PslrmVersionPath,
+
+    [Parameter()]
+    [switch] $SkipPSResourceGetInstall
 )
 
 Set-StrictMode -Version Latest
@@ -23,22 +26,25 @@ if ([string]::IsNullOrWhiteSpace($pslrmVersion)) {
     throw "The bundled pslrm version is not defined in $resolvedPslrmVersionPath."
 }
 
-$existingModule = Get-Module -ListAvailable -Name Microsoft.PowerShell.PSResourceGet |
-    Sort-Object Version -Descending |
-    Select-Object -First 1
-
-if ($null -eq $existingModule -or $existingModule.Version -lt [version]'1.0.1') {
-    Install-Module -Name Microsoft.PowerShell.PSResourceGet -Force -Scope CurrentUser -Repository PSGallery -SkipPublisherCheck
+$psResourceGetModule = & {
+    if (-not $SkipPSResourceGetInstall) {
+        $existingModule = Get-Module -ListAvailable -Name Microsoft.PowerShell.PSResourceGet |
+                Sort-Object Version -Descending |
+                Select-Object -First 1
+        if ($null -eq $existingModule -or $existingModule.Version -lt [version]'1.0.1') {
+            Install-Module -Name Microsoft.PowerShell.PSResourceGet -Force -Scope CurrentUser -Repository PSGallery -SkipPublisherCheck
+        }
+    }
+    Get-Module -ListAvailable -Name Microsoft.PowerShell.PSResourceGet |
+        Sort-Object Version -Descending |
+        Select-Object -First 1
 }
 
-$psResourceGetModule = Get-Module -ListAvailable -Name Microsoft.PowerShell.PSResourceGet |
-    Sort-Object Version -Descending |
-    Select-Object -First 1
 if ($null -eq $psResourceGetModule) {
     throw 'Microsoft.PowerShell.PSResourceGet was not found.'
 }
 else {
-    Write-Host "Found Microsoft.PowerShell.PSResourceGet $($psResourceGetModule.Version) at $($psResourceGetModule.InstalledLocation)."
+    Write-Host "Found Microsoft.PowerShell.PSResourceGet $($psResourceGetModule.Version) at $($psResourceGetModule.Path)."
 }
 
 Import-Module $psResourceGetModule.Path -ErrorAction Stop -Force

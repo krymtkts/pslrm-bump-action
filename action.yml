@@ -13,6 +13,10 @@ inputs:
     description: PowerShell edition used to run action steps. Use core for pwsh or desktop for Windows PowerShell on Windows runners.
     required: false
     default: core
+  skip-psresourceget-install:
+    description: Skip installing Microsoft.PowerShell.PSResourceGet. Useful if the runner already has it installed or is in an offline environment.
+    required: false
+    default: "false"
   # NOTE: Use a PAT when the bump branch or PR must trigger follow-up GitHub Actions workflows.
   # NOTE: Pushes made with the default GITHUB_TOKEN usually do not start new workflow runs.
   github-token:
@@ -64,12 +68,14 @@ runs:
       env:
         ACTION_PATH: ${{ github.action_path }}
         TARGET_POWERSHELL_EDITION: ${{ inputs.target-powershell-edition }}
+        SKIP_PSRESOURCEGET_INSTALL: ${{ inputs.skip-psresourceget-install }}
       run: |
         $bootstrapScriptPath = Join-Path $env:ACTION_PATH 'scripts/Initialize-PslrmBootstrap.ps1'
         $pslrmVersionPath = Join-Path $env:ACTION_PATH 'pslrm-version.psd1'
         $bootstrapParams = @{
           TargetPowerShellEdition = $env:TARGET_POWERSHELL_EDITION
           PslrmVersionPath = $pslrmVersionPath
+          SkipPSResourceGetInstall = ($env:SKIP_PSRESOURCEGET_INSTALL -eq 'true')
         }
         # NOTE: Bootstrap returns a manifest path because RequiredVersion cannot select prerelease builds.
         $pslrmModulePath = & $bootstrapScriptPath @bootstrapParams
