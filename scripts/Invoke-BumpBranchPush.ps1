@@ -58,7 +58,7 @@ function Invoke-BumpBranchPush {
         & git -C $RepositoryRoot config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
         # NOTE: Use an authenticated HTTPS remote so the push runs as the supplied token identity.
-        # NOTE: A PAT can trigger follow-up workflows here; the default GITHUB_TOKEN usually cannot.
+        # NOTE: A PAT can trigger subsequent workflows here; the default GITHUB_TOKEN usually cannot.
         & git -C $RepositoryRoot remote set-url origin "https://x-access-token:$GitHubToken@github.com/$RepositoryFullName.git"
 
         $localLockfileBlobResult = runx "Failed to hash '$gitRelativeLockfilePath'." git -C $RepositoryRoot hash-object -- $gitRelativeLockfilePath

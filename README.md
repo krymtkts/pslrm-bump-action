@@ -78,6 +78,10 @@ Result values mean:
 
 ## Usage
 
+> [!NOTE]
+> This action does not control workflow concurrency.
+> If multiple runs can update the same bump branch, configure `concurrency` in the caller workflow.
+
 Minimal example:
 
 ```yaml
@@ -89,7 +93,8 @@ on:
     - cron: "0 0 * * 1"
 
 permissions:
-  contents: read
+  contents: write
+  pull-requests: write
 
 jobs:
   bump:
@@ -101,15 +106,18 @@ jobs:
       - name: Update lockfile and create pull request
         uses: krymtkts/pslrm-bump-action@v0
         with:
-          github-token: ${{ secrets.PSLRM_BUMP_TOKEN }}
+          github-token: ${{ github.token }}
 ```
 
 > [!IMPORTANT]
-> Pass a PAT to `github-token` when you want follow-up GitHub Actions workflows to run.
-> See [Token Guidance](#token-guidance) for required permissions and `GITHUB_TOKEN` behavior.
-> [!NOTE]
-> This action does not control workflow concurrency.
-> If multiple runs can update the same bump branch, configure `concurrency` in the caller workflow.
+> For most repositories, prefer `GITHUB_TOKEN`.
+> Pull requests created by `github-actions[bot]` can run subsequent workflows after approval by a user with write access.
+> See GitHub's announcement:
+>
+> - [Bot-created pull requests can run workflows if approved - GitHub Changelog](https://github.blog/changelog/2026-06-11-bot-created-pull-requests-can-run-workflows-if-approved/)
+>
+> Use a PAT when subsequent workflows must run automatically without human approval.
+> See [Token Guidance](#token-guidance) for details.
 
 Example for a project in a subdirectory:
 
@@ -118,7 +126,7 @@ Example for a project in a subdirectory:
   uses: krymtkts/pslrm-bump-action@v0
   with:
     project-path: src/MyProject
-    github-token: ${{ secrets.PSLRM_BUMP_TOKEN }}
+    github-token: ${{ github.token }}
 ```
 
 Example for Windows PowerShell:
@@ -132,7 +140,7 @@ jobs:
       - uses: krymtkts/pslrm-bump-action@v0
         with:
           target-powershell-edition: desktop
-          github-token: ${{ secrets.PSLRM_BUMP_TOKEN }}
+          github-token: ${{ github.token }}
 ```
 
 Example for consuming outputs:
@@ -148,7 +156,7 @@ jobs:
         id: bump
         uses: krymtkts/pslrm-bump-action@v0
         with:
-          github-token: ${{ secrets.PSLRM_BUMP_TOKEN }}
+          github-token: ${{ github.token }}
 
       - name: Report result
         shell: pwsh
@@ -160,12 +168,12 @@ jobs:
 
 ## Inputs
 
-| Input                        | Required | Default | Description                                                                                                                          |
-| ---------------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `project-path`               | No       | `.`     | Path to the target project root or a path below it. The action resolves the directory that contains `psreq.psd1`.                    |
-| `target-powershell-edition`  | No       | `core`  | PowerShell edition used to run action steps. Use `core` for `pwsh` or `desktop` for Windows PowerShell on Windows runners.           |
-| `skip-psresourceget-install` | No       | `false` | Skip installing `Microsoft.PowerShell.PSResourceGet`. Useful if the runner already has it installed or is in an offline environment. |
-| `github-token`               | Yes      | none    | Token used for branch push and pull request operations. Use a PAT when you want follow-up GitHub Actions workflows to run.           |
+| Input                        | Required | Default | Description                                                                                                                                                                                  |
+| ---------------------------- | -------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `project-path`               | No       | `.`     | Path to the target project root or a path below it. The action resolves the directory that contains `psreq.psd1`.                                                                            |
+| `target-powershell-edition`  | No       | `core`  | PowerShell edition used to run action steps. Use `core` for `pwsh` or `desktop` for Windows PowerShell on Windows runners.                                                                   |
+| `skip-psresourceget-install` | No       | `false` | Skip installing `Microsoft.PowerShell.PSResourceGet`. Useful if the runner already has it installed or is in an offline environment.                                                         |
+| `github-token`               | Yes      | none    | Token used for branch push and pull request operations. Prefer `GITHUB_TOKEN` for most repositories. Use a PAT only when subsequent workflows must run automatically without human approval. |
 
 ## Outputs
 
@@ -180,13 +188,31 @@ jobs:
 Pass a token that can push branches and create or update pull requests.
 
 > [!IMPORTANT]
-> Use a PAT when this action must trigger follow-up GitHub Actions workflows.
-> Grant that PAT `contents: write` and `pull-requests: write` on the target repository.
+> For most repositories, use `GITHUB_TOKEN`.
+> Pull requests created by `github-actions[bot]` can run subsequent workflows after approval by a user with write access to the repository.
+> See GitHub's announcement:
+>
+> - [Bot-created pull requests can run workflows if approved - GitHub Changelog](https://github.blog/changelog/2026-06-11-bot-created-pull-requests-can-run-workflows-if-approved/)
+>
+> Use a PAT when subsequent workflows must run automatically without human approval.
 
-Otherwise, use `GITHUB_TOKEN` for same-repository runs.
-Grant the workflow `contents: write` and `pull-requests: write`.
-Also enable `Allow GitHub Actions to create and approve pull requests` on the target repository.
-`GITHUB_TOKEN` can complete this flow, but it does not trigger follow-up workflows.
+### Using `GITHUB_TOKEN` (recommended)
+
+Grant the workflow:
+
+```yaml
+permissions:
+  contents: write
+  pull-requests: write
+```
+
+Also enable **Allow GitHub Actions to create and approve pull requests** on the target repository.
+
+With this configuration, the action can:
+
+- Push bump branches.
+- Create or update pull requests.
+- Trigger workflows after approval by a user with write access.
 
 You can verify that setting with GitHub CLI:
 
@@ -203,7 +229,11 @@ gh api --method PUT repos/OWNER/REPO/actions/permissions/workflow `
   -F can_approve_pull_request_reviews=true
 ```
 
-If you use a PAT, store it in a secret and pass that secret to `github-token`.
+### Using a PAT
+
+Use a PAT when workflows must run automatically without human approval.
+Grant the PAT `contents: write` and `pull-requests: write` on the target repository.
+Store the PAT in a secret and pass that secret to `github-token`.
 
 ## Versioning
 
