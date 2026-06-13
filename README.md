@@ -49,7 +49,8 @@ The project root is the directory that contains `psreq.psd1`.
 
 On each run, the action:
 
-1. Installs `Microsoft.PowerShell.PSResourceGet`, then installs pinned `pslrm` from PSGallery.
+1. Installs `Microsoft.PowerShell.PSResourceGet` (unless `>= 1.0.1` exists). Then installs pinned `pslrm` from PSGallery.
+   - [PowerShell 7.4.0](https://github.com/PowerShell/PowerShell/releases/tag/v7.4.0)(LTS) bundles version `1.0.1`.
 2. Resolves the target project root from `project-path`.
 3. Runs `Update-PSLResource` for that project to create or update `psreq.lock.psd1`.
 4. Fails if files other than `psreq.lock.psd1` changed under the target project.

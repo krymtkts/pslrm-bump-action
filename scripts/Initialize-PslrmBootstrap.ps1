@@ -23,14 +23,22 @@ if ([string]::IsNullOrWhiteSpace($pslrmVersion)) {
     throw "The bundled pslrm version is not defined in $resolvedPslrmVersionPath."
 }
 
-# NOTE: act smoke needs a newer PSResourceGet on core to avoid PSGallery ApiVersion V2 failures.
-Install-Module -Name Microsoft.PowerShell.PSResourceGet -Force -Scope CurrentUser -Repository PSGallery -SkipPublisherCheck -AllowPrerelease
+$existingModule = Get-Module -ListAvailable -Name Microsoft.PowerShell.PSResourceGet |
+    Sort-Object Version -Descending |
+    Select-Object -First 1
+
+if ($null -eq $existingModule -or $existingModule.Version -lt [version]'1.0.1') {
+    Install-Module -Name Microsoft.PowerShell.PSResourceGet -Force -Scope CurrentUser -Repository PSGallery -SkipPublisherCheck
+}
 
 $psResourceGetModule = Get-Module -ListAvailable -Name Microsoft.PowerShell.PSResourceGet |
     Sort-Object Version -Descending |
     Select-Object -First 1
 if ($null -eq $psResourceGetModule) {
-    throw 'Microsoft.PowerShell.PSResourceGet was not found after installation.'
+    throw 'Microsoft.PowerShell.PSResourceGet was not found.'
+}
+else {
+    Write-Host "Found Microsoft.PowerShell.PSResourceGet $($psResourceGetModule.Version) at $($psResourceGetModule.InstalledLocation)."
 }
 
 Import-Module $psResourceGetModule.Path -ErrorAction Stop -Force

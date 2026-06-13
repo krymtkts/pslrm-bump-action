@@ -7,6 +7,10 @@ This project starts in the `v0` preview series.
 
 ## [Unreleased]
 
+### Changed
+
+- Avoid unconditional `Microsoft.PowerShell.PSResourceGet` install. Check if version `1.0.1`+ exists.
+
 ## [0.0.1] - 2026-05-30
 
 ### Changed
