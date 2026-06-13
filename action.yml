@@ -17,10 +17,8 @@ inputs:
     description: Skip installing Microsoft.PowerShell.PSResourceGet. Useful if the runner already has it installed or is in an offline environment.
     required: false
     default: "false"
-  # NOTE: Use a PAT when the bump branch or PR must trigger follow-up GitHub Actions workflows.
-  # NOTE: Pushes made with the default GITHUB_TOKEN usually do not start new workflow runs.
   github-token:
-    description: Token for git and GitHub operations such as branch push and pull request creation. Use a PAT when you want follow-up GitHub Actions workflows to run.
+    description: Token for git and GitHub operations such as branch push and pull request creation. Use a PAT when follow-up workflows must run automatically without human approval.
     required: true
 
 outputs:
