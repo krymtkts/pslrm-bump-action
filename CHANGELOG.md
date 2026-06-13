@@ -15,6 +15,14 @@ This project starts in the `v0` preview series.
 
 - Avoid unconditional `Microsoft.PowerShell.PSResourceGet` install. Check if version `1.0.1`+ exists.
 
+### Notes
+
+- Documentation now recommends `GITHUB_TOKEN` for most repositories.
+  GitHub now allows workflows to run for approved pull requests created by
+  `github-actions[bot]`.
+  Use a PAT when subsequent workflows must run automatically without human
+    approval.
+
 ## [0.0.1] - 2026-05-30
 
 ### Changed
