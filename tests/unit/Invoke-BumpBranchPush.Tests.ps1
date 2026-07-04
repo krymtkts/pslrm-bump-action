@@ -37,6 +37,7 @@ Describe 'Invoke-BumpBranchPush' {
         $global:RemoteHeadLine = $null
         $global:RemoteLockfileBlobId = $null
         $global:FailRefUpdate = $false
+        $global:FailTreeCreationAccess = $false
 
         function global:git {
             param(
@@ -124,6 +125,10 @@ Describe 'Invoke-BumpBranchPush' {
             }
 
             if (($Method -ceq 'POST') -and ($Uri -match '/git/trees$')) {
+                if ($global:FailTreeCreationAccess) {
+                    throw 'Resource not accessible by integration'
+                }
+
                 return [pscustomobject]@{
                     sha = 'newtree'
                 }
@@ -200,7 +205,7 @@ Describe 'Invoke-BumpBranchPush' {
             Remove-Item "Function:\global:$functionName" -ErrorAction SilentlyContinue
         }
 
-        foreach ($variableName in 'GitCommands', 'GitHubApiCalls', 'LocalHeadCommit', 'LocalLockfileBlobId', 'CreatedCommitSha', 'CreatedCommitVerified', 'CreatedCommitVerificationReason', 'RemoteHeadLine', 'RemoteLockfileBlobId', 'FailRefUpdate') {
+        foreach ($variableName in 'GitCommands', 'GitHubApiCalls', 'LocalHeadCommit', 'LocalLockfileBlobId', 'CreatedCommitSha', 'CreatedCommitVerified', 'CreatedCommitVerificationReason', 'RemoteHeadLine', 'RemoteLockfileBlobId', 'FailRefUpdate', 'FailTreeCreationAccess') {
             Remove-Item "Variable:\global:$variableName" -ErrorAction SilentlyContinue
         }
     }
@@ -275,5 +280,11 @@ Describe 'Invoke-BumpBranchPush' {
         $global:CreatedCommitVerificationReason = 'unsigned'
 
         { & $script:scriptPath } | Should -Throw "*GitHub did not verify it. Verification reason: unsigned*"
+    }
+
+    It 'fails with permission guidance when GitHub rejects tree creation' {
+        $global:FailTreeCreationAccess = $true
+
+        { & $script:scriptPath } | Should -Throw "*Grant 'contents: write' to GITHUB_TOKEN*"
     }
 }

@@ -59,7 +59,23 @@ function Invoke-GitHubApi {
         $params['Body'] = $Body | ConvertTo-Json -Depth 10
     }
 
-    Invoke-RestMethod @params
+    try {
+        Invoke-RestMethod @params
+    }
+    catch {
+        $statusCode = $null
+        $responseProperty = $_.Exception.PSObject.Properties['Response']
+        if (($null -ne $responseProperty) -and $responseProperty.Value -and $responseProperty.Value.StatusCode) {
+            $statusCode = [int] $responseProperty.Value.StatusCode
+        }
+
+        $message = $_.Exception.Message
+        if (($statusCode -eq 403) -or ($message -match 'Resource not accessible by integration')) {
+            throw "GitHub API request failed because the token cannot write repository contents. Grant 'contents: write' to GITHUB_TOKEN, or pass a PAT/GitHub App token with Contents write permission. Request: $Method $Path`n$message"
+        }
+
+        throw
+    }
 }
 
 function Split-GitHubRepositoryFullName {
