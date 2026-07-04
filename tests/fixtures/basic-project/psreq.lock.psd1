@@ -1,6 +1,10 @@
 @{
-    'Pester' = @{
+    'Microsoft.PowerShell.PSResourceGet' = @{
         'Repository' = 'PSGallery'
-        'Version' = '5.7.1'
+        'Version' = '1.3.0-preview1'
+    }
+    'pslrm' = @{
+        'Repository' = 'PSGallery'
+        'Version' = '0.0.1'
     }
 }
