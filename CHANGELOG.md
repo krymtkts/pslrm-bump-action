@@ -14,6 +14,7 @@ This project starts in the `v0` preview series.
 ### Changed
 
 - Avoid unconditional `Microsoft.PowerShell.PSResourceGet` install. Check if version `1.0.1`+ exists.
+- Create bump commits through GitHub's Git Database API so GitHub can mark them as verified.
 
 ### Notes
 
