@@ -87,82 +87,107 @@ Describe 'Invoke-BumpBranchPush' {
 
         }
 
-        function global:Invoke-RestMethod {
+        function global:gh {
             param(
-                [Parameter(Mandatory)]
-                [string] $Method,
-
-                [Parameter(Mandatory)]
-                [string] $Uri,
-
-                [Parameter()]
-                [hashtable] $Headers,
-
-                [Parameter()]
-                [string] $ContentType,
-
-                [Parameter()]
-                [string] $Body
+                [Parameter(ValueFromRemainingArguments)]
+                [object[]] $Arguments
             )
 
-            $bodyObject = if ([string]::IsNullOrWhiteSpace($Body)) {
+            $flatArguments = @(
+                foreach ($argument in $Arguments) {
+                    if ($argument -is [object[]]) {
+                        foreach ($nestedArgument in $argument) {
+                            [string] $nestedArgument
+                        }
+                    }
+                    else {
+                        [string] $argument
+                    }
+                }
+            )
+
+            $global:LASTEXITCODE = 0
+            if (($flatArguments.Count -lt 2) -or ($flatArguments[0] -cne 'api')) {
+                throw "Unexpected gh call: $($flatArguments -join ' ')"
+            }
+
+            $methodIndex = [array]::IndexOf($flatArguments, '--method')
+            if ($methodIndex -lt 0) {
+                throw "Unexpected gh api call without --method: $($flatArguments -join ' ')"
+            }
+
+            $method = [string] $flatArguments[$methodIndex + 1]
+            $inputIndex = [array]::IndexOf($flatArguments, '--input')
+            $bodyObject = if ($inputIndex -lt 0) {
                 $null
             }
             else {
-                $Body | ConvertFrom-Json
+                Get-Content -LiteralPath ([string] $flatArguments[$inputIndex + 1]) -Raw | ConvertFrom-Json
+            }
+
+            $path = [string] (
+                $flatArguments |
+                    Where-Object { ([string] $_).StartsWith('/repos/') } |
+                    Select-Object -Last 1
+            )
+            if ([string]::IsNullOrWhiteSpace($path)) {
+                throw "Unexpected gh api call without repository path: $($flatArguments -join ' ')"
             }
 
             $global:GitHubApiCalls.Add([pscustomobject]@{
-                    Method = $Method
-                    Uri = $Uri
+                    Method = $method
+                    Uri = "https://api.github.com$path"
                     Body = $bodyObject
                 })
 
-            if (($Method -ceq 'GET') -and ($Uri -match '/git/commits/')) {
-                return [pscustomobject]@{
-                    tree = [pscustomobject]@{ sha = 'basetree' }
-                }
+            if (($method -ceq 'GET') -and ($path -match '/git/commits/')) {
+                '{"tree":{"sha":"basetree"}}'
+                return
             }
 
-            if (($Method -ceq 'POST') -and ($Uri -match '/git/trees$')) {
+            if (($method -ceq 'POST') -and ($path -match '/git/trees$')) {
                 if ($global:FailTreeCreationAccess) {
-                    throw 'Resource not accessible by integration'
+                    'HTTP 403: Resource not accessible by integration'
+                    $global:LASTEXITCODE = 1
+                    return
                 }
 
-                return [pscustomobject]@{
-                    sha = 'newtree'
-                }
+                '{"sha":"newtree"}'
+                return
             }
 
-            if (($Method -ceq 'POST') -and ($Uri -match '/git/commits$')) {
-                return [pscustomobject]@{
-                    sha = $global:CreatedCommitSha
-                    verification = [pscustomobject]@{
-                        verified = $global:CreatedCommitVerified
-                        reason = $global:CreatedCommitVerificationReason
-                    }
-                }
+            if (($method -ceq 'POST') -and ($path -match '/git/commits$')) {
+                @"
+{"sha":"$global:CreatedCommitSha","verification":{"verified":$($global:CreatedCommitVerified.ToString().ToLowerInvariant()),"reason":"$global:CreatedCommitVerificationReason"}}
+"@
+                return
             }
 
-            if (($Method -ceq 'POST') -and ($Uri -match '/git/refs$')) {
-                return [pscustomobject]@{
-                    ref = 'refs/heads/pslrm-bump/pocof'
-                    object = [pscustomobject]@{ sha = $global:CreatedCommitSha }
-                }
+            if (($method -ceq 'POST') -and ($path -match '/git/refs$')) {
+                @"
+{"ref":"refs/heads/pslrm-bump/pocof","object":{"sha":"$global:CreatedCommitSha"}}
+"@
+                return
             }
 
-            if (($Method -ceq 'PATCH') -and ($Uri -match '/git/refs/')) {
+            if (($method -ceq 'PATCH') -and ($path -match '/git/refs/')) {
                 if ($global:FailRefUpdate) {
-                    throw 'Reference update failed.'
+                    'Reference update failed.'
+                    $global:LASTEXITCODE = 1
+                    return
                 }
 
-                return [pscustomobject]@{
-                    ref = 'refs/heads/pslrm-bump/pocof'
-                    object = [pscustomobject]@{ sha = $global:CreatedCommitSha }
-                }
+                @"
+{"ref":"refs/heads/pslrm-bump/pocof","object":{"sha":"$global:CreatedCommitSha"}}
+"@
+                return
             }
 
-            throw "Unexpected GitHub API call: $Method $Uri"
+            throw "Unexpected GitHub API call: $method https://api.github.com$path"
+        }
+
+        function global:Invoke-RestMethod {
+            throw 'Invoke-RestMethod should not be used.'
         }
 
         function Get-RecordedGitCommands {
@@ -201,7 +226,7 @@ Describe 'Invoke-BumpBranchPush' {
             }
         }
 
-        foreach ($functionName in 'git', 'Invoke-RestMethod', 'Get-RecordedGitCommands', 'Get-RecordedGitHubApiCalls') {
+        foreach ($functionName in 'git', 'gh', 'Invoke-RestMethod', 'Get-RecordedGitCommands', 'Get-RecordedGitHubApiCalls') {
             Remove-Item "Function:\global:$functionName" -ErrorAction SilentlyContinue
         }
 

@@ -25,6 +25,42 @@ function Get-RelativePath {
     [System.Uri]::UnescapeDataString($relativeUri.ToString()).Replace('/', [System.IO.Path]::DirectorySeparatorChar)
 }
 
+function Invoke-GitHubApiCommand {
+    param(
+        [Parameter(Mandatory)]
+        [ValidateSet('GET', 'POST', 'PATCH')]
+        [string] $Method,
+
+        [Parameter(Mandatory)]
+        [string] $Path,
+
+        [Parameter(Mandatory)]
+        [string] $GitHubToken,
+
+        [Parameter()]
+        [AllowNull()]
+        [string] $BodyFilePath
+    )
+
+    $originalGitHubToken = $env:GH_TOKEN
+    try {
+        $env:GH_TOKEN = $GitHubToken
+        $params = '--method', $Method, '-H', 'Accept: application/vnd.github+json', '-H', 'X-GitHub-Api-Version: 2022-11-28', $Path
+        if (-not [string]::IsNullOrWhiteSpace($BodyFilePath)) {
+            $params += '--input', $BodyFilePath
+        }
+        run gh api @params
+    }
+    finally {
+        if ($null -eq $originalGitHubToken) {
+            Remove-Item Env:\GH_TOKEN -ErrorAction SilentlyContinue
+        }
+        else {
+            $env:GH_TOKEN = $originalGitHubToken
+        }
+    }
+}
+
 function Invoke-GitHubApi {
     param(
         [Parameter(Mandatory)]
@@ -42,39 +78,47 @@ function Invoke-GitHubApi {
         [object] $Body
     )
 
-    $headers = @{
-        Accept = 'application/vnd.github+json'
-        Authorization = "Bearer $GitHubToken"
-        'X-GitHub-Api-Version' = '2022-11-28'
-    }
-
-    $params = @{
-        Method = $Method
-        Uri = "https://api.github.com$Path"
-        Headers = $headers
-    }
-
+    $bodyFilePath = $null
     if ($null -ne $Body) {
-        $params['ContentType'] = 'application/json'
-        $params['Body'] = $Body | ConvertTo-Json -Depth 10
+        $bodyFilePath = [System.IO.Path]::GetTempFileName()
+        $json = $Body | ConvertTo-Json -Depth 10
+        [System.IO.File]::WriteAllText($bodyFilePath, $json, [System.Text.UTF8Encoding]::new($false))
     }
 
+    Write-Host "GitHub API: $Method $Path"
     try {
-        Invoke-RestMethod @params
+        $result = Invoke-GitHubApiCommand -Method $Method -Path $Path -GitHubToken $GitHubToken -BodyFilePath $bodyFilePath
     }
-    catch {
-        $statusCode = $null
-        $responseProperty = $_.Exception.PSObject.Properties['Response']
-        if (($null -ne $responseProperty) -and $responseProperty.Value -and $responseProperty.Value.StatusCode) {
-            $statusCode = [int] $responseProperty.Value.StatusCode
+    finally {
+        if ($null -ne $bodyFilePath) {
+            Remove-Item -LiteralPath $bodyFilePath -ErrorAction SilentlyContinue
         }
+    }
 
-        $message = $_.Exception.Message
-        if (($statusCode -eq 403) -or ($message -match 'Resource not accessible by integration')) {
+    $output = @(Get-NonEmptyStringLines -Lines @($result.Output))
+    if ($result.ExitCode -ne 0) {
+        $message = $output -join "`n"
+        if ($message -match 'Resource not accessible by integration|HTTP 403|status.?code.?403|\"status\":\s*\"403\"') {
             throw "GitHub API request failed because the token cannot write repository contents. Grant 'contents: write' to GITHUB_TOKEN, or pass a PAT/GitHub App token with Contents write permission. Request: $Method $Path`n$message"
         }
 
-        throw
+        if ($output.Count -gt 0) {
+            throw "GitHub API request failed. Request: $Method $Path`n$message"
+        }
+
+        throw "GitHub API request failed. Request: $Method $Path"
+    }
+
+    if ($output.Count -eq 0) {
+        return $null
+    }
+
+    $json = $output -join "`n"
+    try {
+        $json | ConvertFrom-Json
+    }
+    catch {
+        throw "GitHub API request returned invalid JSON. Request: $Method $Path`n$json"
     }
 }
 
