@@ -82,7 +82,7 @@ function Invoke-GitHubApi {
     if ($null -ne $Body) {
         $bodyFilePath = [System.IO.Path]::GetTempFileName()
         # NOTE: pipe and deep depth causes hangs in Windows PowerShell 5.1.
-        $json = ConvertTo-Json -InputObject $Body -Depth 5
+        $json = ConvertTo-Json -InputObject $Body -Depth 5 -Compress
         [System.IO.File]::WriteAllText($bodyFilePath, $json, [System.Text.UTF8Encoding]::new($false))
     }
 
@@ -174,7 +174,8 @@ function New-GitHubSignedCommitForLockfile {
         throw "Failed to resolve the base tree for parent commit '$ParentCommitSha'."
     }
 
-    $lockfileContent = Get-Content -LiteralPath $LockfilePath -Raw
+    # NOTE: Serialize the lockfile content to prevent extended properties from being included in Windows PowerShell runners.
+    $lockfileContent = [string] (Get-Content -LiteralPath $LockfilePath -Raw)
     $tree = Invoke-GitHubApi -Method POST -Path "$repositoryPath/git/trees" -GitHubToken $GitHubToken -Body @{
         base_tree = $baseTreeSha
         tree = @(

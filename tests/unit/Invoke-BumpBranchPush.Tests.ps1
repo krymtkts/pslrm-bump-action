@@ -241,9 +241,11 @@ Describe 'Invoke-BumpBranchPush' {
         $commands = Get-RecordedGitCommands
         $apiCalls = @(Get-RecordedGitHubApiCalls)
         $outputLines = Get-Content -Path $env:GITHUB_OUTPUT
+        $treeCall = $apiCalls | Where-Object { ($_.Method -ceq 'POST') -and ($_.Uri -match '/git/trees$') } | Select-Object -First 1
         $commitCall = $apiCalls | Where-Object { ($_.Method -ceq 'POST') -and ($_.Uri -match '/git/commits$') } | Select-Object -First 1
         $refCall = $apiCalls | Where-Object { ($_.Method -ceq 'POST') -and ($_.Uri -match '/git/refs$') } | Select-Object -First 1
 
+        $treeCall.Body.tree[0].content | Should -BeExactly "@{}`n"
         $commitCall.Body.message | Should -BeExactly 'Bump pocof to 0.23.0'
         $commitCall.Body.parents | Should -Be @('basecommit')
         $commitCall.Body.PSObject.Properties.Name | Should -Not -Contain 'author'
