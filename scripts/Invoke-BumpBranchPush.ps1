@@ -81,7 +81,8 @@ function Invoke-GitHubApi {
     $bodyFilePath = $null
     if ($null -ne $Body) {
         $bodyFilePath = [System.IO.Path]::GetTempFileName()
-        $json = $Body | ConvertTo-Json -Depth 10
+        # NOTE: pipe and deep depth causes hangs in Windows PowerShell 5.1.
+        $json = ConvertTo-Json -InputObject $Body -Depth 5
         [System.IO.File]::WriteAllText($bodyFilePath, $json, [System.Text.UTF8Encoding]::new($false))
     }
 
