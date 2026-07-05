@@ -83,14 +83,25 @@ function Get-NonEmptyStringLines {
         [object[]] $Lines
     )
 
-    , @(
-        foreach ($line in $Lines) {
-            $text = [string] $line
-            if (-not [string]::IsNullOrWhiteSpace($text)) {
-                $text
+    $items = [System.Collections.Generic.List[string]]::new()
+    foreach ($line in $Lines) {
+        if (($line -is [System.Array]) -or (($line -is [System.Collections.IEnumerable]) -and ($line -isnot [string]))) {
+            foreach ($nestedValue in $line) {
+                $text = [string] $nestedValue
+                if (-not [string]::IsNullOrWhiteSpace($text)) {
+                    $items.Add($text)
+                }
             }
         }
-    )
+        else {
+            $text = [string] $line
+            if (-not [string]::IsNullOrWhiteSpace($text)) {
+                $items.Add($text)
+            }
+        }
+    }
+
+    $items.ToArray()
 }
 
 function run {
@@ -152,7 +163,7 @@ function runx {
         return $result
     }
 
-    $details = Get-NonEmptyStringLines -Lines $result.Output
+    $details = @(Get-NonEmptyStringLines -Lines $result.Output)
     if ($details.Count -gt 0) {
         throw "$FailureMessage`n$($details -join "`n")"
     }

@@ -65,6 +65,8 @@ When the action needs a pull request:
 
 - The action derives the bump branch name from the changed dependency names.
 - The action derives the commit message from the updated lockfile.
+- The action creates the bump commit through GitHub's Git Database API.
+  This lets GitHub mark the commit as verified for the token identity.
 - It also derives the pull request title and body from the updated lockfile.
 - The action resolves the base branch from the checked-out branch first.
 - If needed, it falls back to GitHub workflow context.

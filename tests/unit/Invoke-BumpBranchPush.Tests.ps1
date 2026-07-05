@@ -28,13 +28,16 @@ Describe 'Invoke-BumpBranchPush' {
         $env:REPOSITORY_FULL_NAME = 'krymtkts/pslrm-actions-sandbox'
 
         $global:GitCommands = [System.Collections.Generic.List[string[]]]::new()
+        $global:GitHubApiCalls = [System.Collections.Generic.List[object]]::new()
+        $global:LocalHeadCommit = 'basecommit'
         $global:LocalLockfileBlobId = 'local-lockfile-blob'
+        $global:CreatedCommitSha = 'signedcommit'
+        $global:CreatedCommitVerified = $true
+        $global:CreatedCommitVerificationReason = 'valid'
         $global:RemoteHeadLine = $null
         $global:RemoteLockfileBlobId = $null
-        $global:PushExitCode = 0
-        $global:PushOutput = @(
-            'branch pushed'
-        )
+        $global:FailRefUpdate = $false
+        $global:FailTreeCreationAccess = $false
 
         function global:git {
             param(
@@ -68,6 +71,11 @@ Describe 'Invoke-BumpBranchPush' {
             }
 
             if ($Arguments -contains 'rev-parse') {
+                if ($Arguments[-1] -ceq 'HEAD') {
+                    $global:LocalHeadCommit
+                    return
+                }
+
                 if ($null -eq $global:RemoteLockfileBlobId) {
                     $global:LASTEXITCODE = 1
                     return
@@ -77,30 +85,123 @@ Describe 'Invoke-BumpBranchPush' {
                 return
             }
 
-            if ($Arguments -contains 'push') {
-                $global:LASTEXITCODE = $global:PushExitCode
-                foreach ($line in @($global:PushOutput)) {
-                    $line
+        }
+
+        function global:gh {
+            param(
+                [Parameter(ValueFromRemainingArguments)]
+                [object[]] $Arguments
+            )
+
+            $flatArguments = @(
+                foreach ($argument in $Arguments) {
+                    if ($argument -is [object[]]) {
+                        foreach ($nestedArgument in $argument) {
+                            [string] $nestedArgument
+                        }
+                    }
+                    else {
+                        [string] $argument
+                    }
+                }
+            )
+
+            $global:LASTEXITCODE = 0
+            if (($flatArguments.Count -lt 2) -or ($flatArguments[0] -cne 'api')) {
+                throw "Unexpected gh call: $($flatArguments -join ' ')"
+            }
+
+            $methodIndex = [array]::IndexOf($flatArguments, '--method')
+            if ($methodIndex -lt 0) {
+                throw "Unexpected gh api call without --method: $($flatArguments -join ' ')"
+            }
+
+            $method = [string] $flatArguments[$methodIndex + 1]
+            $inputIndex = [array]::IndexOf($flatArguments, '--input')
+            $bodyObject = if ($inputIndex -lt 0) {
+                $null
+            }
+            else {
+                Get-Content -LiteralPath ([string] $flatArguments[$inputIndex + 1]) -Raw | ConvertFrom-Json
+            }
+
+            $path = [string] (
+                $flatArguments |
+                    Where-Object { ([string] $_).StartsWith('/repos/') } |
+                    Select-Object -Last 1
+            )
+            if ([string]::IsNullOrWhiteSpace($path)) {
+                throw "Unexpected gh api call without repository path: $($flatArguments -join ' ')"
+            }
+
+            $global:GitHubApiCalls.Add([pscustomobject]@{
+                    Method = $method
+                    Uri = "https://api.github.com$path"
+                    Body = $bodyObject
+                })
+
+            if (($method -ceq 'GET') -and ($path -match '/git/commits/')) {
+                '{"tree":{"sha":"basetree"}}'
+                return
+            }
+
+            if (($method -ceq 'POST') -and ($path -match '/git/trees$')) {
+                if ($global:FailTreeCreationAccess) {
+                    'HTTP 403: Resource not accessible by integration'
+                    $global:LASTEXITCODE = 1
+                    return
                 }
 
+                '{"sha":"newtree"}'
                 return
             }
 
-            if ($Arguments -contains 'commit') {
-                '[pslrm-bump/pocof abc1234] Bump pocof to 0.23.0'
+            if (($method -ceq 'POST') -and ($path -match '/git/commits$')) {
+                @"
+{"sha":"$global:CreatedCommitSha","verification":{"verified":$($global:CreatedCommitVerified.ToString().ToLowerInvariant()),"reason":"$global:CreatedCommitVerificationReason"}}
+"@
                 return
             }
 
-            if ($Arguments -contains 'switch') {
-                'Switched branch.'
+            if (($method -ceq 'POST') -and ($path -match '/git/refs$')) {
+                @"
+{"ref":"refs/heads/pslrm-bump/pocof","object":{"sha":"$global:CreatedCommitSha"}}
+"@
                 return
             }
+
+            if (($method -ceq 'PATCH') -and ($path -match '/git/refs/')) {
+                if ($global:FailRefUpdate) {
+                    'Reference update failed.'
+                    $global:LASTEXITCODE = 1
+                    return
+                }
+
+                @"
+{"ref":"refs/heads/pslrm-bump/pocof","object":{"sha":"$global:CreatedCommitSha"}}
+"@
+                return
+            }
+
+            throw "Unexpected GitHub API call: $method https://api.github.com$path"
+        }
+
+        function global:Invoke-RestMethod {
+            throw 'Invoke-RestMethod should not be used.'
         }
 
         function Get-RecordedGitCommands {
             @(
                 foreach ($commandArguments in $global:GitCommands) {
                     $commandArguments -join ' '
+                }
+            )
+        }
+
+        function Get-RecordedGitHubApiCalls {
+            @(
+                foreach ($apiCall in $global:GitHubApiCalls) {
+                    $apiCall
                 }
             )
         }
@@ -125,25 +226,35 @@ Describe 'Invoke-BumpBranchPush' {
             }
         }
 
-        foreach ($functionName in 'git', 'Get-RecordedGitCommands') {
+        foreach ($functionName in 'git', 'gh', 'Invoke-RestMethod', 'Get-RecordedGitCommands', 'Get-RecordedGitHubApiCalls') {
             Remove-Item "Function:\global:$functionName" -ErrorAction SilentlyContinue
         }
 
-        foreach ($variableName in 'GitCommands', 'LocalLockfileBlobId', 'RemoteHeadLine', 'RemoteLockfileBlobId', 'PushExitCode', 'PushOutput') {
+        foreach ($variableName in 'GitCommands', 'GitHubApiCalls', 'LocalHeadCommit', 'LocalLockfileBlobId', 'CreatedCommitSha', 'CreatedCommitVerified', 'CreatedCommitVerificationReason', 'RemoteHeadLine', 'RemoteLockfileBlobId', 'FailRefUpdate', 'FailTreeCreationAccess') {
             Remove-Item "Variable:\global:$variableName" -ErrorAction SilentlyContinue
         }
     }
 
-    It 'uses an empty-expect lease when the remote branch does not exist' {
+    It 'creates a signed bump commit and branch when the remote branch does not exist' {
         & $script:scriptPath
 
         $commands = Get-RecordedGitCommands
-        $pushCommand = $commands | Where-Object { $_ -match ' push ' } | Select-Object -First 1
+        $apiCalls = @(Get-RecordedGitHubApiCalls)
         $outputLines = Get-Content -Path $env:GITHUB_OUTPUT
+        $treeCall = $apiCalls | Where-Object { ($_.Method -ceq 'POST') -and ($_.Uri -match '/git/trees$') } | Select-Object -First 1
+        $commitCall = $apiCalls | Where-Object { ($_.Method -ceq 'POST') -and ($_.Uri -match '/git/commits$') } | Select-Object -First 1
+        $refCall = $apiCalls | Where-Object { ($_.Method -ceq 'POST') -and ($_.Uri -match '/git/refs$') } | Select-Object -First 1
 
-        $pushCommand | Should -Match ([regex]::Escape('--force-with-lease=refs/heads/pslrm-bump/pocof:'))
+        $treeCall.Body.tree[0].content | Should -BeExactly "@{}`n"
+        $commitCall.Body.message | Should -BeExactly 'Bump pocof to 0.23.0'
+        $commitCall.Body.parents | Should -Be @('basecommit')
+        $commitCall.Body.PSObject.Properties.Name | Should -Not -Contain 'author'
+        $commitCall.Body.PSObject.Properties.Name | Should -Not -Contain 'committer'
+        $refCall.Body.ref | Should -BeExactly 'refs/heads/pslrm-bump/pocof'
+        $refCall.Body.sha | Should -BeExactly 'signedcommit'
         $outputLines | Should -Contain 'branch_action=created'
-        @($commands | Where-Object { $_ -match ' commit ' }).Count | Should -Be 1
+        @($commands | Where-Object { $_ -match ' commit ' }).Count | Should -Be 0
+        @($commands | Where-Object { $_ -match ' push ' }).Count | Should -Be 0
     }
 
     It 'reuses the existing remote branch when the lockfile already matches' {
@@ -153,39 +264,54 @@ Describe 'Invoke-BumpBranchPush' {
         & $script:scriptPath
 
         $commands = Get-RecordedGitCommands
+        $apiCalls = @(Get-RecordedGitHubApiCalls)
         $outputLines = Get-Content -Path $env:GITHUB_OUTPUT
 
         @($commands | Where-Object { $_ -match ' fetch ' }).Count | Should -Be 1
         $outputLines | Should -Contain 'branch_action=noop'
-        @($commands | Where-Object { $_ -match ' switch ' }).Count | Should -Be 0
+        $apiCalls.Count | Should -Be 0
         @($commands | Where-Object { $_ -match ' commit ' }).Count | Should -Be 0
         @($commands | Where-Object { $_ -match ' push ' }).Count | Should -Be 0
     }
 
-    It 'updates an existing remote branch with an explicit lease when the lockfile differs' {
+    It 'updates an existing remote branch with a fast-forward ref update when the lockfile differs' {
         $global:RemoteHeadLine = "deadbeef`trefs/heads/pslrm-bump/pocof"
         $global:RemoteLockfileBlobId = 'remote-lockfile-blob'
 
         & $script:scriptPath
 
         $commands = Get-RecordedGitCommands
-        $pushCommand = $commands | Where-Object { $_ -match ' push ' } | Select-Object -First 1
+        $apiCalls = @(Get-RecordedGitHubApiCalls)
         $outputLines = Get-Content -Path $env:GITHUB_OUTPUT
+        $commitCall = $apiCalls | Where-Object { ($_.Method -ceq 'POST') -and ($_.Uri -match '/git/commits$') } | Select-Object -First 1
+        $patchCall = $apiCalls | Where-Object { ($_.Method -ceq 'PATCH') -and ($_.Uri -match '/git/refs/') } | Select-Object -First 1
 
-        $pushCommand | Should -Match ([regex]::Escape('--force-with-lease=refs/heads/pslrm-bump/pocof:deadbeef'))
+        $commitCall.Body.parents | Should -Be @('deadbeef')
+        $patchCall.Body.sha | Should -BeExactly 'signedcommit'
+        $patchCall.Body.force | Should -BeFalse
         $outputLines | Should -Contain 'branch_action=updated'
-        @($commands | Where-Object { $_ -match ' commit ' }).Count | Should -Be 1
+        @($commands | Where-Object { $_ -match ' commit ' }).Count | Should -Be 0
+        @($commands | Where-Object { $_ -match ' push ' }).Count | Should -Be 0
     }
 
-    It 'fails with a clear message when the explicit lease detects a stale remote branch' {
+    It 'fails with a clear message when the ref update fails after inspection' {
         $global:RemoteHeadLine = "deadbeef`trefs/heads/pslrm-bump/pocof"
         $global:RemoteLockfileBlobId = 'remote-lockfile-blob'
-        $global:PushExitCode = 1
-        $global:PushOutput = @(
-            '! [rejected] pslrm-bump/pocof -> pslrm-bump/pocof (stale info)',
-            "error: failed to push some refs to 'https://github.com/krymtkts/pslrm-actions-sandbox.git'"
-        )
+        $global:FailRefUpdate = $true
 
-        { & $script:scriptPath } | Should -Throw "*Remote branch 'pslrm-bump/pocof' changed after inspection*"
+        { & $script:scriptPath } | Should -Throw "*Failed to update bump branch 'pslrm-bump/pocof'. The branch may have changed after inspection.*"
+    }
+
+    It 'fails when GitHub does not verify the created commit' {
+        $global:CreatedCommitVerified = $false
+        $global:CreatedCommitVerificationReason = 'unsigned'
+
+        { & $script:scriptPath } | Should -Throw "*GitHub did not verify it. Verification reason: unsigned*"
+    }
+
+    It 'fails with permission guidance when GitHub rejects tree creation' {
+        $global:FailTreeCreationAccess = $true
+
+        { & $script:scriptPath } | Should -Throw "*Grant 'contents: write' to GITHUB_TOKEN*"
     }
 }
