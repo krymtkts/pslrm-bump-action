@@ -68,6 +68,9 @@ When the action needs a pull request:
 - The action creates the bump commit through GitHub's Git Database API.
   This lets GitHub mark the commit as verified for the token identity.
 - It also derives the pull request title and body from the updated lockfile.
+- The action manages the `dependencies` and `pslrm` repository labels.
+  It creates missing labels and applies available labels to the bump pull request.
+  If label management fails, pull request automation continues without them.
 - The action resolves the base branch from the checked-out branch first.
 - If needed, it falls back to GitHub workflow context.
 
