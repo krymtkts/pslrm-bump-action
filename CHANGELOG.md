@@ -7,6 +7,13 @@ This project starts in the `v0` preview series.
 
 ## [Unreleased]
 
+## [0.0.3] - 2026-07-26
+
+### Added
+
+- Automatically create and apply the `dependencies` and `pslrm` labels to bump pull requests.
+  Label management failures do not block pull request automation.
+
 ## [0.0.2] - 2026-07-05
 
 ### Added
@@ -21,10 +28,8 @@ This project starts in the `v0` preview series.
 ### Notes
 
 - Documentation now recommends `GITHUB_TOKEN` for most repositories.
-  GitHub now allows workflows to run for approved pull requests created by
-  `github-actions[bot]`.
-  Use a PAT when subsequent workflows must run automatically without human
-    approval.
+  GitHub now allows workflows to run for approved pull requests created by `github-actions[bot]`.
+  Use a PAT when subsequent workflows must run automatically without human approval.
 
 ## [0.0.1] - 2026-05-30
 
@@ -52,6 +57,7 @@ This project starts in the `v0` preview series.
 ---
 
 [Unreleased]: https://github.com/krymtkts/pslrm-bump-action/commits/main
+[0.0.3]: https://github.com/krymtkts/pslrm-bump-action/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/krymtkts/pslrm-bump-action/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/krymtkts/pslrm-bump-action/compare/v0.0.1-alpha...v0.0.1
 [0.0.1-alpha]: https://github.com/krymtkts/pslrm-bump-action/releases/tag/v0.0.1-alpha
