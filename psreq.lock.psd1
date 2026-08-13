@@ -5,7 +5,7 @@
     }
     'PSKeepAChangelogTools' = @{
         'Repository' = 'PSGallery'
-        'Version' = '0.1.0'
+        'Version' = '0.2.0'
     }
     'PSScriptAnalyzer' = @{
         'Repository' = 'PSGallery'
@@ -13,6 +13,6 @@
     }
     'Pester' = @{
         'Repository' = 'PSGallery'
-        'Version' = '6.0.0-alpha5'
+        'Version' = '6.1.0'
     }
 }
