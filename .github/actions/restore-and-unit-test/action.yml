@@ -1,5 +1,5 @@
-name: Restore and unit test
-description: Bootstrap pslrm, restore locked development dependencies, and run unit tests.
+name: Restore and test
+description: Bootstrap pslrm, restore locked development dependencies, and run lint and unit tests.
 
 inputs:
   shell:
@@ -38,7 +38,7 @@ runs:
         Import-Module $env:PSLRM_MODULE_PATH -Force
         Restore-PSLResource
 
-    - name: Run unit tests through Invoke-Build
+    - name: Run lint and unit tests through Invoke-Build
       shell: ${{ inputs.shell }}
       env:
         DISABLE_COVERAGE: ${{ inputs.disable-coverage }}
@@ -47,7 +47,7 @@ runs:
         Import-Module $env:PSLRM_MODULE_PATH -Force
 
         $params = @{
-            Tasks = 'UnitTest'
+            Tasks = 'TestAll'
         }
         if ($env:DISABLE_COVERAGE -eq 'true') {
             $params['DisableCoverage'] = $true

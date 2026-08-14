@@ -130,6 +130,8 @@ Task Lint Init, {
         $issues
         throw 'Invoke-ScriptAnalyzer reported issues.'
     }
+
+    Assert-KeepAChangelogReleaseMetadata -Path $ChangelogPath -Version 'Unreleased'
 }
 
 Task UnitTest Init, {

@@ -29,8 +29,8 @@ if ([string]::IsNullOrWhiteSpace($pslrmVersion)) {
 $psResourceGetModule = & {
     if (-not $SkipPSResourceGetInstall) {
         $existingModule = Get-Module -ListAvailable -Name Microsoft.PowerShell.PSResourceGet |
-                Sort-Object Version -Descending |
-                Select-Object -First 1
+            Sort-Object Version -Descending |
+            Select-Object -First 1
         if ($null -eq $existingModule -or $existingModule.Version -lt [version]'1.0.1') {
             Install-Module -Name Microsoft.PowerShell.PSResourceGet -Force -Scope CurrentUser -Repository PSGallery -SkipPublisherCheck
         }
