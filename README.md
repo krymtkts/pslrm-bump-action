@@ -1,5 +1,9 @@
 # pslrm-bump-action
 
+![Test main status](https://github.com/krymtkts/pslrm-bump-action/actions/workflows/ci.yml/badge.svg)
+![Top Language](https://img.shields.io/github/languages/top/krymtkts/pslrm-bump-action?color=%23b845fc)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
 pslrm-bump-action is a GitHub Action for repositories that use [pslrm](https://github.com/krymtkts/pslrm).
 
 It updates a project lockfile `psreq.lock.psd1` with pslrm.
