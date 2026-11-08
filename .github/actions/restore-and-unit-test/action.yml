@@ -13,6 +13,14 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Verify workflow dependencies
+      if: runner.os == 'Linux'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh extension install github/gh-actions-lock
+        gh actions-lock --verify
     - name: Bootstrap pslrm from PSGallery
       id: bootstrap
       shell: ${{ inputs.shell }}
