@@ -3,7 +3,7 @@ name: Bump pslrm lockfile
 on:
   workflow_dispatch:
   schedule:
-    - cron: "38 6 * * 5"
+    - cron: "38 6 * * *"
       timezone: "Asia/Tokyo"
 
 concurrency:
@@ -16,6 +16,13 @@ permissions:
 
 jobs:
   bump:
+    name: Bump (${{ matrix.project_path }})
+    strategy:
+      fail-fast: false
+      matrix:
+        project_path:
+          - .
+          - tests/fixtures/basic-project
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -24,5 +31,5 @@ jobs:
       - name: Update lockfile and create pull request
         uses: krymtkts/pslrm-bump-action@main
         with:
-          project-path: .
+          project-path: ${{ matrix.project_path }}
           github-token: ${{ github.token }}
