@@ -25,10 +25,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v6.1.0
 
       - name: Restore dependencies and run unit tests
-        uses: ./.github/actions/restore-and-unit-test
+        uses: $/.github/actions/restore-and-unit-test
         timeout-minutes: 15
         with:
           shell: ${{ matrix.shell }}
@@ -50,14 +50,14 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v6.1.0
 
       # NOTE: Producer-side changed-run validation lives in unit tests so CI can exercise
       # the supported PowerShell 7 / Windows PowerShell 5.1 script paths without opening
       # real bump branches or pull requests from this repository.
       - name: Run self-test action
         id: smoke
-        uses: ./
+        uses: $/
         with:
           project-path: tests/fixtures/basic-project
           target-powershell-edition: ${{ matrix.edition }}

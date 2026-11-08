@@ -52,7 +52,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout release tag
-        uses: actions/checkout@v6
+        uses: actions/checkout@v6.1.0
         with:
           ref: ${{ needs.extract-version.outputs.release_tag }}
           fetch-depth: 1
@@ -83,7 +83,7 @@ jobs:
       contents: read
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v6.1.0
 
       - name: Assert remote exact/major tag invariant
         env:
